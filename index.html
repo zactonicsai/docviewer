@@ -3,301 +3,424 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Document List + Details Panel</title>
+  <title>SecureDoc Portal</title>
 
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"DM Sans"', 'sans-serif'],
+            body: ['"DM Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <!-- OpenLayers (CDN) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css">
   <script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
 
   <style>
-    #map { height: 260px; }
-  </style>
+    * { font-family: 'DM Sans', sans-serif; }
 
-  <script>
-    // Tailwind dark mode via class
-    tailwind.config = { darkMode: 'class' };
-  </script>
+    /* Smooth theme transition */
+    html, body, header, main, aside, section, div, table, thead, tbody, tr, th, td, button, input, select, nav, p, span, h1, h2, h3, label {
+      transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    /* OpenLayers map containers */
+    #map { height: 260px; }
+    #mapSearchMap { height: 340px; }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 99px; }
+    .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+    /* Sort indicator animation */
+    .sort-icon { transition: transform 0.2s ease, opacity 0.2s ease; }
+
+    /* Popup backdrop */
+    .popup-backdrop {
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .dark .popup-backdrop {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    /* Popup entrance animation */
+    .popup-enter {
+      animation: popupSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes popupSlideIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Table row highlight */
+    .row-active {
+      background: linear-gradient(90deg, #eff6ff 0%, #f8fafc 100%) !important;
+    }
+    .dark .row-active {
+      background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%) !important;
+    }
+
+    /* Header glass effect */
+    .header-glass {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+    }
+    .dark .header-glass {
+      background: rgba(15,23,42,0.85);
+    }
+
+    /* Glow ring on search focus */
+    .search-glow:focus-within {
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+    }
+    .dark .search-glow:focus-within {
+      box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
+    }
+
+    /* Column header hover */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { background: rgba(59,130,246,0.06); }
+    .dark th.sortable:hover { background: rgba(96,165,250,0.08); }
+
+    /* Filter pill inputs */
+    .filter-input {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 6px 12px;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .filter-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+    }
+    .dark .filter-input {
+      background: #1e293b;
+      border-color: #334155;
+      color: #e2e8f0;
+    }
+    .dark .filter-input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96,165,250,0.1);
+    }
+
+    /* Fancy button styles */
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 20px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(59,130,246,0.25);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(59,130,246,0.35);
+    }
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 10px 20px;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+    .dark .btn-secondary {
+      background: #1e293b;
+      color: #cbd5e1;
+      border-color: #334155;
+    }
+    .dark .btn-secondary:hover {
+      background: #334155;
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    /* Map crosshair cursor */
+    .map-pick-mode .ol-viewport { cursor: crosshair !important; }
+  </style>
 </head>
 
-<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-  <!-- HEADER -->
-  <header class="sticky top-0 z-50 bg-white/90 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-body">
+
+  <!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
+  <header class="sticky top-0 z-50 header-glass border-b border-slate-200 dark:border-slate-800">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="flex h-16 items-center justify-between gap-3">
-        <!-- Brand -->
+
+        <!-- Left: Brand -->
         <div class="flex items-center gap-3 min-w-0">
-          <div id="brandIcon" class="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 text-lg font-bold"></div>
-          <div class="min-w-0">
-            <div id="brandTitle" class="font-semibold truncate"></div>
-            <div id="brandSubtitle" class="text-xs text-slate-500 dark:text-slate-400 truncate"></div>
+          <div id="brandIcon" class="h-9 w-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white text-sm font-bold shadow-md"></div>
+          <div class="min-w-0 hidden sm:block">
+            <div id="brandTitle" class="font-semibold truncate dark:text-white"></div>
+            <div id="brandSubtitle" class="text-[11px] text-slate-500 dark:text-slate-400 truncate"></div>
           </div>
         </div>
 
-        <!-- Header Search (desktop) -->
-        <div class="hidden md:flex flex-1 justify-center">
-          <div class="w-full max-w-xl">
-            <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400">
-                <!-- search icon -->
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-width="2" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"/>
-                </svg>
-              </span>
+        <!-- Center: Search Bar -->
+        <div class="flex-1 max-w-xl mx-4">
+          <div class="search-glow flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 h-10 transition-all">
+            <!-- Search icon -->
+            <svg class="h-4 w-4 text-slate-400 dark:text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input id="headerSearchInput" type="text" placeholder="Search documents…"
+              class="flex-1 bg-transparent border-none outline-none text-sm px-2 py-1 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500" />
 
-              <input id="headerSearch"
-                class="w-full h-11 pl-10 pr-28 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/40
-                       text-sm outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
-                placeholder="Search documents, owners, types, locations..."
-                type="text"
-              />
+            <!-- Divider -->
+            <div class="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
-              <!-- right-side icons -->
-              <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <button id="mapSearchBtn"
-                  class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-                  title="Map search"
-                >
-                  <!-- map pin icon -->
-                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-width="2" d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z" />
-                    <path stroke-linecap="round" stroke-width="2" d="M12 10a2 2 0 1 0 0.001 0z" />
-                  </svg>
-                </button>
+            <!-- Map Search Icon Button -->
+            <button id="openMapSearchBtn" title="Search by map location"
+              class="flex items-center justify-center h-7 w-7 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z"/>
+                <circle cx="12" cy="10" r="2.5"/>
+              </svg>
+            </button>
 
-                <button id="advancedSearchBtn"
-                  class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-                  title="Advanced search"
-                >
-                  <!-- sliders icon -->
-                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-width="2" d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/>
-                    <path stroke-linecap="round" stroke-width="2" d="M2 14h4M10 10h4M18 16h4"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
+            <!-- Advanced Search Icon Button -->
+            <button id="openAdvSearchBtn" title="Advanced search"
+              class="flex items-center justify-center h-7 w-7 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M4 6h16M8 12h8M6 18h12"/>
+              </svg>
+            </button>
           </div>
         </div>
 
-        <!-- Desktop Menu -->
-        <nav id="desktopMenu" class="hidden md:flex items-center gap-2"></nav>
-
-        <!-- Right controls -->
+        <!-- Right: Theme Toggle + Desktop Menu + Mobile -->
         <div class="flex items-center gap-2">
-          <!-- Theme toggle -->
-          <button id="themeToggle"
-            class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
-            title="Toggle dark/light mode"
-            aria-label="Toggle theme"
-          ></button>
+          <!-- Dark/Light Mode Toggle -->
+          <button id="themeToggle" title="Toggle dark/light mode"
+            class="relative h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center transition-all">
+            <!-- Sun icon (shown in dark mode) -->
+            <svg id="sunIcon" class="h-5 w-5 text-amber-500 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+            <!-- Moon icon (shown in light mode) -->
+            <svg id="moonIcon" class="h-5 w-5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          </button>
 
-          <!-- Mobile menu -->
+          <!-- Desktop Menu -->
+          <nav id="desktopMenu" class="hidden md:flex items-center gap-1"></nav>
+
+          <!-- Mobile Menu Button -->
           <button id="mobileMenuBtn"
-            class="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
-            aria-label="Open menu"
-          >
+            class="md:hidden h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center"
+            aria-label="Open menu">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              <path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
             </svg>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Mobile: Search row -->
-    <div class="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-      <div class="mx-auto max-w-7xl px-4 py-3">
-        <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path stroke-linecap="round" stroke-width="2" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"/>
-            </svg>
-          </span>
-
-          <input id="headerSearchMobile"
-            class="w-full h-11 pl-10 pr-28 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/40
-                   text-sm outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
-            placeholder="Search documents..."
-            type="text"
-          />
-
-          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <button id="mapSearchBtnMobile"
-              class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-              title="Map search"
-            >
-              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-width="2" d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z" />
-                <path stroke-linecap="round" stroke-width="2" d="M12 10a2 2 0 1 0 0.001 0z" />
-              </svg>
-            </button>
-            <button id="advancedSearchBtnMobile"
-              class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-              title="Advanced search"
-            >
-              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-width="2" d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/>
-                <path stroke-linecap="round" stroke-width="2" d="M2 14h4M10 10h4M18 16h4"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Mobile Menu Panel -->
-    <div id="mobileMenuPanel" class="md:hidden hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <div id="mobileMenuPanel" class="md:hidden hidden border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
       <div id="mobileMenu" class="mx-auto max-w-7xl px-4 py-3 space-y-1"></div>
     </div>
   </header>
 
-  <!-- MAIN -->
+  <!-- ═══════════════════════════════════════════ MAIN ═══════════════════════════════════════════ -->
   <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-    <!-- Top row -->
+    <!-- Page header row -->
     <div class="flex items-center justify-between gap-3 mb-5">
       <div>
-        <h1 class="text-xl font-semibold">Documents</h1>
-        <p class="text-sm text-slate-600 dark:text-slate-400">Sort columns, filter, and click a row to view details + map.</p>
+        <h1 class="text-xl font-semibold dark:text-white">Documents</h1>
+        <p class="text-sm text-slate-500 dark:text-slate-400">Click a row to view details, location, and map.</p>
       </div>
-
       <button id="openDetailsBtn"
-        class="inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
-        title="Open details panel"
-      >
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm transition-colors"
+        title="Open details panel">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path stroke-linecap="round" stroke-width="2" d="M10 6h10M10 12h10M10 18h10M4 6h2M4 12h2M4 18h2"/>
         </svg>
-        <span class="text-sm">Details</span>
+        <span>Details</span>
       </button>
     </div>
 
+    <!-- Two-column layout -->
     <div id="layout" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-      <!-- LEFT -->
+
+      <!-- ═══ LEFT CONTAINER ═══ -->
       <section id="leftPane" class="lg:col-span-12">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-          <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-3">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <div class="h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                  <svg class="h-5 w-5 text-slate-700 dark:text-slate-200" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-width="2"
-                          d="M4 7a2 2 0 0 1 2-2h8l4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/>
-                    <path stroke-linecap="round" stroke-width="2" d="M14 5v4h4"/>
-                  </svg>
-                </div>
-                <div>
-                  <div class="font-semibold">Document List</div>
-                  <div class="text-xs text-slate-500 dark:text-slate-400" id="docCount"></div>
-                </div>
-              </div>
 
-              <button id="openPanelIcon"
-                class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
-                title="Open details panel"
-              >
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-width="2" d="M9 18l6-6-6-6" />
+          <!-- Card header -->
+          <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm">
+                <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-width="2" d="M4 7a2 2 0 0 1 2-2h8l4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/>
+                  <path stroke-linecap="round" stroke-width="2" d="M14 5v4h4"/>
                 </svg>
-              </button>
+              </div>
+              <div>
+                <div class="font-semibold dark:text-white">Document List</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400" id="docCount"></div>
+              </div>
             </div>
+            <button id="openPanelIcon"
+              class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              title="Open details panel">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-width="2" d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
 
-            <!-- Left filter controls -->
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2">
-              <div class="md:col-span-6">
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-width="2" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"/>
-                    </svg>
-                  </span>
-                  <input id="tableSearch"
-                    class="w-full h-10 pl-10 pr-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/40
-                           text-sm outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
-                    placeholder="Filter table (name, owner, type, location...)"
-                    type="text"
-                  />
-                </div>
+          <!-- Filter Bar -->
+          <div id="filterBar" class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40">
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                Filters
               </div>
-
-              <div class="md:col-span-3">
-                <select id="typeFilter"
-                  class="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
-                  <option value="">All Types</option>
-                </select>
-              </div>
-
-              <div class="md:col-span-3">
-                <select id="favoritesFilter"
-                  class="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
-                  <option value="all">All</option>
-                  <option value="favorites">Favorites only</option>
-                </select>
-              </div>
+              <input id="filterName" type="text" placeholder="Name…" class="filter-input w-40" />
+              <input id="filterOwner" type="text" placeholder="Owner…" class="filter-input w-32" />
+              <select id="filterType" class="filter-input w-36">
+                <option value="">All Types</option>
+              </select>
+              <input id="filterDateFrom" type="date" class="filter-input w-36" title="From date" />
+              <input id="filterDateTo" type="date" class="filter-input w-36" title="To date" />
+              <button id="clearFiltersBtn" class="filter-input hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300 dark:hover:border-red-800 hover:text-red-600 dark:hover:text-red-400 text-slate-400 dark:text-slate-500 transition-colors" title="Clear all filters">
+                <svg class="h-3.5 w-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                Clear
+              </button>
             </div>
           </div>
 
-          <!-- table -->
+          <!-- Table -->
           <div class="overflow-x-auto">
-            <table class="min-w-full text-sm">
-              <thead class="bg-slate-50 dark:bg-slate-950/40 text-slate-600 dark:text-slate-300">
+            <table class="min-w-full text-sm" id="docTable">
+              <thead class="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300">
                 <tr class="text-left">
-                  <th class="px-4 py-3 w-32">Actions</th>
-
-                  <!-- Sortable headers -->
-                  <th class="px-4 py-3 w-44">
-                    <button class="sort-btn inline-flex items-center gap-2" data-sort="date" title="Sort by date">
-                      Date <span id="sortIndicator-date" class="text-xs text-slate-400 dark:text-slate-500"></span>
-                    </button>
+                  <th class="px-4 py-3 w-28 text-xs font-semibold uppercase tracking-wider">Actions</th>
+                  <th class="px-4 py-3 w-36 sortable text-xs font-semibold uppercase tracking-wider" data-sort="date">
+                    <span class="flex items-center gap-1.5">
+                      Date
+                      <span class="sort-icon opacity-30">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                      </span>
+                    </span>
                   </th>
-
-                  <th class="px-4 py-3">
-                    <button class="sort-btn inline-flex items-center gap-2" data-sort="name" title="Sort by name">
-                      Document Name <span id="sortIndicator-name" class="text-xs text-slate-400 dark:text-slate-500"></span>
-                    </button>
+                  <th class="px-4 py-3 sortable text-xs font-semibold uppercase tracking-wider" data-sort="name">
+                    <span class="flex items-center gap-1.5">
+                      Document Name
+                      <span class="sort-icon opacity-30">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                      </span>
+                    </span>
                   </th>
+                  <th class="px-4 py-3 sortable text-xs font-semibold uppercase tracking-wider" data-sort="owner">
+                    <span class="flex items-center gap-1.5">
+                      Owner
+                      <span class="sort-icon opacity-30">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                      </span>
+                    </span>
+                  </th>
+                  <th class="px-4 py-3 sortable text-xs font-semibold uppercase tracking-wider" data-sort="type">
+                    <span class="flex items-center gap-1.5">
+                      Type
+                      <span class="sort-icon opacity-30">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                      </span>
+                    </span>
+                  </th>
+                  <th class="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Location</th>
                 </tr>
               </thead>
               <tbody id="docTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
             </table>
           </div>
+
+          <!-- Results info bar -->
+          <div class="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
+            <span id="resultInfo" class="text-xs text-slate-500 dark:text-slate-400"></span>
+            <span id="sortInfo" class="text-xs text-slate-400 dark:text-slate-500"></span>
+          </div>
         </div>
       </section>
 
-      <!-- RIGHT -->
+      <!-- ═══ RIGHT CONTAINER (hidden by default) ═══ -->
       <aside id="rightPane" class="hidden lg:col-span-5">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          <!-- top bar -->
           <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2">
-              <div class="h-9 w-9 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center">
+              <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-sm">
                 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-width="2" d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z" />
-                  <path stroke-linecap="round" stroke-width="2" d="M12 10a2 2 0 1 0 0.001 0z" />
+                  <path stroke-linecap="round" stroke-width="2" d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z"/>
+                  <path stroke-linecap="round" stroke-width="2" d="M12 10a2 2 0 1 0 0.001 0z"/>
                 </svg>
               </div>
               <div>
-                <div class="font-semibold">Document Details</div>
+                <div class="font-semibold dark:text-white">Document Details</div>
                 <div class="text-xs text-slate-500 dark:text-slate-400">Owner, type, location, map</div>
               </div>
             </div>
-
             <button id="closeRightPane"
-              class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
-              title="Close details"
-            >
+              class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              title="Close details">
               <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-width="2" d="M6 6l12 12M18 6l-12 12" />
+                <path stroke-linecap="round" stroke-width="2" d="M6 6l12 12M18 6l-12 12"/>
               </svg>
             </button>
           </div>
 
+          <!-- content -->
           <div class="p-4 space-y-4">
-            <div class="rounded-2xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-4">
+            <div class="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
-                  <div id="detailTitle" class="text-base font-semibold truncate">Select a document</div>
+                  <div id="detailTitle" class="text-base font-semibold truncate dark:text-white">Select a document</div>
                   <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
                     <span class="font-medium">Owner:</span> <span id="detailOwner">—</span>
                     <span class="mx-2">•</span>
@@ -309,28 +432,25 @@
                   <div id="detailDate">—</div>
                 </div>
               </div>
-
-              <div class="mt-3 text-sm text-slate-700 dark:text-slate-200">
-                <div class="font-medium text-slate-800 dark:text-slate-100">Location</div>
+              <div class="mt-3 text-sm text-slate-700 dark:text-slate-300">
+                <div class="font-medium text-slate-800 dark:text-slate-200">Location</div>
                 <div id="detailLocationText" class="mt-1">—</div>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-              <div class="px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <div class="font-semibold text-sm">Map</div>
-                <div class="text-xs text-slate-500 dark:text-slate-400">
-                  <span id="detailLatLng">—</span>
-                </div>
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <div class="px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div class="font-semibold text-sm dark:text-white">Map</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400"><span id="detailLatLng">—</span></div>
               </div>
               <div class="p-3 bg-white dark:bg-slate-900">
-                <div id="map" class="w-full rounded-xl border border-slate-200 dark:border-slate-800"></div>
+                <div id="map" class="w-full rounded-xl border border-slate-200 dark:border-slate-700"></div>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-              <div class="font-semibold text-sm mb-2">Notes</div>
-              <p id="detailNotes" class="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">—</p>
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+              <div class="font-semibold text-sm mb-2 dark:text-white">Notes</div>
+              <p id="detailNotes" class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">—</p>
             </div>
           </div>
         </div>
@@ -338,9 +458,130 @@
     </div>
   </main>
 
+  <!-- ═══════════════════════════════════════════ MAP SEARCH POPUP ═══════════════════════════════════════════ -->
+  <div id="mapSearchPopup" class="fixed inset-0 z-[100] hidden">
+    <div class="popup-backdrop absolute inset-0" id="mapSearchBackdrop"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+      <div class="popup-enter pointer-events-auto w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm">
+              <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z"/>
+                <circle cx="12" cy="10" r="2.5"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold dark:text-white">Map Location Search</h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Click on the map to pick a location, then search nearby documents</p>
+            </div>
+          </div>
+          <button id="closeMapSearch" class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <!-- Map -->
+        <div class="px-6 pt-4">
+          <div id="mapSearchMap" class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden map-pick-mode"></div>
+        </div>
+        <!-- Location Info -->
+        <div class="px-6 py-4 space-y-3">
+          <div class="flex flex-wrap gap-3">
+            <div class="flex-1 min-w-[140px]">
+              <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Latitude</label>
+              <input id="mapSearchLat" type="text" placeholder="Click map…" class="filter-input w-full font-mono text-sm" readonly />
+            </div>
+            <div class="flex-1 min-w-[140px]">
+              <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Longitude</label>
+              <input id="mapSearchLng" type="text" placeholder="Click map…" class="filter-input w-full font-mono text-sm" readonly />
+            </div>
+            <div class="flex-1 min-w-[100px]">
+              <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Radius (mi)</label>
+              <input id="mapSearchRadius" type="number" value="50" min="1" max="500" class="filter-input w-full text-sm" />
+            </div>
+          </div>
+          <div class="flex items-center gap-3 pt-1">
+            <button id="mapSearchBtn" class="btn-primary flex items-center gap-2">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              Find Documents
+            </button>
+            <button id="mapSearchClear" class="btn-secondary">Clear &amp; Reset</button>
+            <span id="mapSearchStatus" class="text-xs text-slate-500 dark:text-slate-400 ml-auto"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ ADVANCED SEARCH POPUP ═══════════════════════════════════════════ -->
+  <div id="advSearchPopup" class="fixed inset-0 z-[100] hidden">
+    <div class="popup-backdrop absolute inset-0" id="advSearchBackdrop"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+      <div class="popup-enter pointer-events-auto w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm">
+              <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M4 6h16M8 12h8M6 18h12"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold dark:text-white">Advanced Search</h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Search by name, date range, or location</p>
+            </div>
+          </div>
+          <button id="closeAdvSearch" class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <!-- Form -->
+        <div class="px-6 py-5 space-y-4">
+          <!-- Name -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Document Name</label>
+            <input id="advSearchName" type="text" placeholder="Enter document name or keyword…" class="filter-input w-full" />
+          </div>
+          <!-- Date Range -->
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Date From</label>
+              <input id="advSearchDateFrom" type="date" class="filter-input w-full" />
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Date To</label>
+              <input id="advSearchDateTo" type="date" class="filter-input w-full" />
+            </div>
+          </div>
+          <!-- Location -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Location</label>
+            <input id="advSearchLocation" type="text" placeholder="City, state, or address…" class="filter-input w-full" />
+          </div>
+          <!-- Owner -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Owner</label>
+            <input id="advSearchOwner" type="text" placeholder="Owner name…" class="filter-input w-full" />
+          </div>
+        </div>
+        <!-- Actions -->
+        <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-3">
+          <button id="advSearchBtn" class="btn-primary flex items-center gap-2">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            Search
+          </button>
+          <button id="advSearchClear" class="btn-secondary">Clear All</button>
+          <span id="advSearchStatus" class="text-xs text-slate-500 dark:text-slate-400 ml-auto"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SCRIPT ═══════════════════════════════════════════ -->
   <script>
     /*******************************
-     * DATA
+     * 1) DATA
      *******************************/
     const headerConfig = {
       brand: {
@@ -404,35 +645,11 @@
         lng: -86.8104,
         notes: "Attendance roster, modules completed, certifications pending.",
         favorite: true
-      },
-      {
-        id: "DOC-1005",
-        name: "Claims Intake - Field Injury",
-        date: "2026-01-22",
-        owner: "Z. Lewis",
-        type: "Claims Intake",
-        locationText: "Mobile, AL — West Yard",
-        lat: 30.6954,
-        lng: -88.0399,
-        notes: "Intake summary and attached photos; access controlled (RBAC/ABAC).",
-        favorite: false
       }
     ];
 
     /*******************************
-     * STATE (sorting + filtering)
-     *******************************/
-    const state = {
-      sortBy: "date",            // "date" | "name"
-      sortDir: "desc",           // "asc" | "desc"
-      tableQuery: "",
-      typeFilter: "",
-      favoritesFilter: "all",    // "all" | "favorites"
-      headerQuery: ""
-    };
-
-    /*******************************
-     * ICONS
+     * 2) ICONS
      *******************************/
     function iconSvg(name) {
       const common = 'class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"';
@@ -444,41 +661,13 @@
         gear: `<svg ${common}><path ${stroke} d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path ${stroke} d="M19.4 15a7.7 7.7 0 0 0 .1-2l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1L15 3h-6l-.4 3a7.7 7.7 0 0 0-1.7 1L4.5 6l-2 3.5 2 1.5a7.7 7.7 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a7.7 7.7 0 0 0 1.7 1L9 21h6l.4-3a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.5-2.1-1.5z"/></svg>`,
         star: `<svg ${common}><path ${stroke} d="M12 17.3l-5.2 2.7 1-5.8L3.6 9.9l5.8-.8L12 3.8l2.6 5.3 5.8.8-4.2 4.3 1 5.8z"/></svg>`,
         download: `<svg ${common}><path ${stroke} d="M12 3v12"/><path ${stroke} d="M7 10l5 5 5-5"/><path ${stroke} d="M5 21h14"/></svg>`,
-        info: `<svg ${common}><path ${stroke} d="M12 17v-6"/><path ${stroke} d="M12 7h.01"/><path ${stroke} d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>`,
-        sun: `<svg ${common}><path ${stroke} d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12z"/><path ${stroke} d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`,
-        moon: `<svg ${common}><path ${stroke} d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>`,
-        arrowUp: `<svg ${common}><path ${stroke} d="M12 19V5"/><path ${stroke} d="M6 11l6-6 6 6"/></svg>`,
-        arrowDown: `<svg ${common}><path ${stroke} d="M12 5v14"/><path ${stroke} d="M6 13l6 6 6-6"/></svg>`
+        info: `<svg ${common}><path ${stroke} d="M12 17v-6"/><path ${stroke} d="M12 7h.01"/><path ${stroke} d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>`
       };
       return icons[name] || icons.file;
     }
 
     /*******************************
-     * THEME (dark/light) with localStorage
-     *******************************/
-    function getPreferredTheme() {
-      const saved = localStorage.getItem("theme");
-      if (saved === "dark" || saved === "light") return saved;
-      // fallback to system preference
-      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-
-    function applyTheme(theme) {
-      document.documentElement.classList.toggle("dark", theme === "dark");
-      localStorage.setItem("theme", theme);
-      renderThemeButton(theme);
-    }
-
-    function renderThemeButton(theme) {
-      const btn = document.getElementById("themeToggle");
-      btn.innerHTML = theme === "dark"
-        ? `<span class="text-slate-100">${iconSvg("sun")}</span>`
-        : `<span class="text-slate-700">${iconSvg("moon")}</span>`;
-      btn.title = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
-    }
-
-    /*******************************
-     * HEADER RENDER
+     * 3) HEADER RENDER
      *******************************/
     function renderHeader(cfg) {
       document.getElementById("brandIcon").textContent = cfg.brand.iconText;
@@ -487,139 +676,222 @@
 
       const desktopMenu = document.getElementById("desktopMenu");
       desktopMenu.innerHTML = "";
-
       const mobileMenu = document.getElementById("mobileMenu");
       mobileMenu.innerHTML = "";
 
       cfg.menu.forEach(item => {
         const a = document.createElement("a");
         a.href = item.href;
-        a.className =
-          "inline-flex items-center gap-2 h-10 px-3 rounded-xl text-sm border border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800";
-        a.innerHTML = `<span class="text-slate-700 dark:text-slate-200">${iconSvg(item.icon)}</span><span>${item.label}</span>`;
+        a.className = "inline-flex items-center gap-2 h-10 px-3 rounded-xl text-sm border border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors";
+        a.innerHTML = `<span class="text-slate-700 dark:text-slate-300">${iconSvg(item.icon)}</span><span class="dark:text-slate-200">${item.label}</span>`;
         desktopMenu.appendChild(a);
 
         const m = document.createElement("a");
         m.href = item.href;
-        m.className =
-          "flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700";
-        m.innerHTML = `<span class="text-slate-700 dark:text-slate-200">${iconSvg(item.icon)}</span><span class="text-sm">${item.label}</span>`;
+        m.className = "flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-colors";
+        m.innerHTML = `<span class="text-slate-700 dark:text-slate-300">${iconSvg(item.icon)}</span><span class="text-sm dark:text-slate-200">${item.label}</span>`;
         mobileMenu.appendChild(m);
       });
     }
 
     /*******************************
-     * UTIL
+     * 4) DARK / LIGHT MODE
+     *******************************/
+    function initTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+      updateThemeIcons();
+    }
+
+    function updateThemeIcons() {
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('sunIcon').classList.toggle('hidden', !isDark);
+      document.getElementById('moonIcon').classList.toggle('hidden', isDark);
+    }
+
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      updateThemeIcons();
+    });
+
+    /*******************************
+     * 5) SORTING
+     *******************************/
+    let sortField = null;
+    let sortDir = 'asc'; // 'asc' or 'desc'
+
+    function sortDocuments(docs) {
+      if (!sortField) return docs;
+      const sorted = [...docs];
+      sorted.sort((a, b) => {
+        let valA, valB;
+        switch(sortField) {
+          case 'date':
+            valA = a.date; valB = b.date; break;
+          case 'name':
+            valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+          case 'owner':
+            valA = a.owner.toLowerCase(); valB = b.owner.toLowerCase(); break;
+          case 'type':
+            valA = a.type.toLowerCase(); valB = b.type.toLowerCase(); break;
+          default: return 0;
+        }
+        if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+      return sorted;
+    }
+
+    function updateSortUI() {
+      document.querySelectorAll('th.sortable').forEach(th => {
+        const field = th.dataset.sort;
+        const iconEl = th.querySelector('.sort-icon');
+        if (field === sortField) {
+          iconEl.style.opacity = '1';
+          iconEl.style.transform = sortDir === 'asc' ? 'rotate(180deg)' : 'rotate(0deg)';
+          iconEl.querySelector('svg').setAttribute('stroke', '#3b82f6');
+        } else {
+          iconEl.style.opacity = '0.3';
+          iconEl.style.transform = 'rotate(0deg)';
+          iconEl.querySelector('svg').setAttribute('stroke', 'currentColor');
+        }
+      });
+
+      const sortInfoEl = document.getElementById('sortInfo');
+      if (sortField) {
+        const labels = { date: 'Date', name: 'Name', owner: 'Owner', type: 'Type' };
+        sortInfoEl.textContent = `Sorted by ${labels[sortField]} (${sortDir === 'asc' ? '↑ ascending' : '↓ descending'})`;
+      } else {
+        sortInfoEl.textContent = '';
+      }
+    }
+
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (sortField === field) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortField = field;
+          sortDir = 'asc';
+        }
+        updateSortUI();
+        applyFiltersAndRender();
+      });
+    });
+
+    /*******************************
+     * 6) FILTERING
+     *******************************/
+    function getFilteredDocuments() {
+      const nameVal = document.getElementById('filterName').value.toLowerCase().trim();
+      const ownerVal = document.getElementById('filterOwner').value.toLowerCase().trim();
+      const typeVal = document.getElementById('filterType').value;
+      const dateFrom = document.getElementById('filterDateFrom').value;
+      const dateTo = document.getElementById('filterDateTo').value;
+
+      return documents.filter(doc => {
+        if (nameVal && !doc.name.toLowerCase().includes(nameVal) && !doc.id.toLowerCase().includes(nameVal)) return false;
+        if (ownerVal && !doc.owner.toLowerCase().includes(ownerVal)) return false;
+        if (typeVal && doc.type !== typeVal) return false;
+        if (dateFrom && doc.date < dateFrom) return false;
+        if (dateTo && doc.date > dateTo) return false;
+        return true;
+      });
+    }
+
+    function applyFiltersAndRender() {
+      const filtered = getFilteredDocuments();
+      const sorted = sortDocuments(filtered);
+      renderDocumentsTable(sorted, filtered.length);
+    }
+
+    // Populate type dropdown
+    function populateTypeFilter() {
+      const types = [...new Set(documents.map(d => d.type))].sort();
+      const select = document.getElementById('filterType');
+      types.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        select.appendChild(opt);
+      });
+    }
+
+    // Filter event listeners
+    ['filterName', 'filterOwner', 'filterType', 'filterDateFrom', 'filterDateTo'].forEach(id => {
+      document.getElementById(id).addEventListener('input', applyFiltersAndRender);
+      document.getElementById(id).addEventListener('change', applyFiltersAndRender);
+    });
+
+    document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+      document.getElementById('filterName').value = '';
+      document.getElementById('filterOwner').value = '';
+      document.getElementById('filterType').value = '';
+      document.getElementById('filterDateFrom').value = '';
+      document.getElementById('filterDateTo').value = '';
+      applyFiltersAndRender();
+    });
+
+    // Header search box
+    document.getElementById('headerSearchInput').addEventListener('input', (e) => {
+      document.getElementById('filterName').value = e.target.value;
+      applyFiltersAndRender();
+    });
+
+    /*******************************
+     * 7) TABLE RENDER
      *******************************/
     function formatDate(iso) {
       const d = new Date(iso + "T00:00:00");
       return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
     }
 
-    function normalize(s) {
-      return (s || "").toString().toLowerCase().trim();
-    }
-
-    function docSearchHaystack(doc) {
-      return normalize([
-        doc.id, doc.name, doc.owner, doc.type, doc.locationText, doc.date
-      ].join(" "));
-    }
-
-    /*******************************
-     * FILTER + SORT
-     *******************************/
-    function getViewDocuments() {
-      const q = normalize(state.tableQuery || state.headerQuery);
-      const type = state.typeFilter;
-      const favMode = state.favoritesFilter;
-
-      let filtered = documents.filter(doc => {
-        if (type && doc.type !== type) return false;
-        if (favMode === "favorites" && !doc.favorite) return false;
-        if (q && !docSearchHaystack(doc).includes(q)) return false;
-        return true;
-      });
-
-      filtered.sort((a, b) => {
-        const dir = state.sortDir === "asc" ? 1 : -1;
-        if (state.sortBy === "date") {
-          // ISO date sort
-          if (a.date < b.date) return -1 * dir;
-          if (a.date > b.date) return  1 * dir;
-          return 0;
-        }
-        // name sort
-        const an = a.name.toLowerCase();
-        const bn = b.name.toLowerCase();
-        if (an < bn) return -1 * dir;
-        if (an > bn) return  1 * dir;
-        return 0;
-      });
-
-      return filtered;
-    }
-
-    function updateSortIndicators() {
-      const fields = ["date", "name"];
-      fields.forEach(f => {
-        const el = document.getElementById(`sortIndicator-${f}`);
-        if (!el) return;
-        if (state.sortBy !== f) {
-          el.innerHTML = "";
-          return;
-        }
-        el.innerHTML = state.sortDir === "asc"
-          ? `<span class="inline-flex items-center gap-1">${iconSvg("arrowUp")}</span>`
-          : `<span class="inline-flex items-center gap-1">${iconSvg("arrowDown")}</span>`;
-      });
-    }
-
-    /*******************************
-     * TABLE RENDER
-     *******************************/
-    function renderDocumentsTable() {
-      const docs = getViewDocuments();
+    function renderDocumentsTable(docs, totalFiltered) {
       const tbody = document.getElementById("docTableBody");
       tbody.innerHTML = "";
-      document.getElementById("docCount").textContent = `${docs.length} showing / ${documents.length} total`;
-      updateSortIndicators();
+
+      const total = totalFiltered !== undefined ? totalFiltered : docs.length;
+      document.getElementById("docCount").textContent = `${docs.length} documents`;
+      document.getElementById("resultInfo").textContent = total < documents.length
+        ? `Showing ${docs.length} of ${documents.length} documents`
+        : `${documents.length} documents total`;
 
       docs.forEach(doc => {
         const tr = document.createElement("tr");
-        tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer";
+        tr.className = `hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${currentDocId === doc.id ? 'row-active' : ''}`;
 
         // actions
         const tdActions = document.createElement("td");
         tdActions.className = "px-4 py-3";
         tdActions.innerHTML = `
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <button data-action="favorite" data-id="${doc.id}"
-              class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-              title="Toggle favorite"
-            >
-              <span class="${doc.favorite ? "text-amber-500" : "text-slate-500 dark:text-slate-300"}">${iconSvg("star")}</span>
+              class="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
+              title="Toggle favorite">
+              <span class="${doc.favorite ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}">${iconSvg("star")}</span>
             </button>
-
             <button data-action="download" data-id="${doc.id}"
-              class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-              title="Download"
-            >
-              <span class="text-slate-600 dark:text-slate-200">${iconSvg("download")}</span>
+              class="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
+              title="Download">
+              <span class="text-slate-500 dark:text-slate-400">${iconSvg("download")}</span>
             </button>
-
             <button data-action="details" data-id="${doc.id}"
-              class="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
-              title="Open details"
-            >
-              <span class="text-slate-600 dark:text-slate-200">${iconSvg("info")}</span>
+              class="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
+              title="Open details">
+              <span class="text-slate-500 dark:text-slate-400">${iconSvg("info")}</span>
             </button>
           </div>
         `;
 
         // date
         const tdDate = document.createElement("td");
-        tdDate.className = "px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-nowrap";
+        tdDate.className = "px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap text-sm";
         tdDate.textContent = formatDate(doc.date);
 
         // name
@@ -627,12 +899,38 @@
         tdName.className = "px-4 py-3";
         tdName.innerHTML = `
           <div class="font-medium text-slate-900 dark:text-slate-100">${doc.name}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">${doc.id} • ${doc.owner} • ${doc.type}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-500 font-mono">${doc.id}</div>
         `;
+
+        // owner
+        const tdOwner = document.createElement("td");
+        tdOwner.className = "px-4 py-3 text-slate-600 dark:text-slate-400 text-sm";
+        tdOwner.textContent = doc.owner;
+
+        // type
+        const tdType = document.createElement("td");
+        tdType.className = "px-4 py-3";
+        const typeColors = {
+          'Incident Report': 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800',
+          'Audit Summary': 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800',
+          'Maintenance Log': 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
+          'Training Record': 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+        };
+        const colorClass = typeColors[doc.type] || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300';
+        tdType.innerHTML = `<span class="badge ${colorClass}">${doc.type}</span>`;
+
+        // location
+        const tdLocation = document.createElement("td");
+        tdLocation.className = "px-4 py-3 text-slate-600 dark:text-slate-400 text-xs max-w-[200px] truncate";
+        tdLocation.title = doc.locationText;
+        tdLocation.textContent = doc.locationText;
 
         tr.appendChild(tdActions);
         tr.appendChild(tdDate);
         tr.appendChild(tdName);
+        tr.appendChild(tdOwner);
+        tr.appendChild(tdType);
+        tr.appendChild(tdLocation);
 
         tr.addEventListener("click", (e) => {
           const btn = e.target.closest("button");
@@ -643,38 +941,33 @@
         tbody.appendChild(tr);
       });
 
-      // action delegation
-      tbody.onclick = (e) => {
+      // action button handling (delegation)
+      tbody.addEventListener("click", (e) => {
         const btn = e.target.closest("button");
         if (!btn) return;
-
         const action = btn.getAttribute("data-action");
         const id = btn.getAttribute("data-id");
-
         if (action === "favorite") toggleFavorite(id);
         if (action === "download") fakeDownload(id);
         if (action === "details") openDetails(id);
-
         e.stopPropagation();
-      };
+      });
     }
 
     function toggleFavorite(id) {
       const doc = documents.find(d => d.id === id);
       if (!doc) return;
       doc.favorite = !doc.favorite;
-      renderDocumentsTable();
+      applyFiltersAndRender();
       if (currentDocId === id) renderDetails(doc);
     }
 
     function fakeDownload(id) {
       const doc = documents.find(d => d.id === id);
       if (!doc) return;
-
       const content = `Downloaded document:\n\n${doc.name}\nID: ${doc.id}\nOwner: ${doc.owner}\nType: ${doc.type}\nDate: ${doc.date}\nLocation: ${doc.locationText}\nLat/Lng: ${doc.lat}, ${doc.lng}\n`;
       const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
-
       const a = document.createElement("a");
       a.href = url;
       a.download = `${doc.id}.txt`;
@@ -685,35 +978,7 @@
     }
 
     /*******************************
-     * LEFT FILTER UI
-     *******************************/
-    function populateTypeFilter() {
-      const sel = document.getElementById("typeFilter");
-      const types = Array.from(new Set(documents.map(d => d.type))).sort();
-      // keep first "All Types"
-      sel.innerHTML = `<option value="">All Types</option>` + types.map(t => `<option value="${t}">${t}</option>`).join("");
-    }
-
-    /*******************************
-     * SORT UI
-     *******************************/
-    function setupSortButtons() {
-      document.querySelectorAll(".sort-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const field = btn.getAttribute("data-sort");
-          if (state.sortBy === field) {
-            state.sortDir = (state.sortDir === "asc") ? "desc" : "asc";
-          } else {
-            state.sortBy = field;
-            state.sortDir = "asc";
-          }
-          renderDocumentsTable();
-        });
-      });
-    }
-
-    /*******************************
-     * RIGHT PANE OPEN/CLOSE
+     * 8) RIGHT PANE OPEN/CLOSE
      *******************************/
     const leftPane = document.getElementById("leftPane");
     const rightPane = document.getElementById("rightPane");
@@ -723,6 +988,8 @@
       rightPane.classList.remove("hidden");
       leftPane.classList.remove("lg:col-span-12");
       leftPane.classList.add("lg:col-span-7");
+      rightPane.classList.remove("lg:col-span-5");
+      rightPane.classList.add("lg:col-span-5");
     }
 
     function hideRightPane() {
@@ -730,23 +997,23 @@
       leftPane.classList.remove("lg:col-span-7");
       leftPane.classList.add("lg:col-span-12");
       currentDocId = null;
+      applyFiltersAndRender(); // refresh row highlights
     }
 
     /*******************************
-     * OPENLAYERS MAP
+     * 9) OPENLAYERS — DETAILS MAP
      *******************************/
-    let map, markerLayer;
+    let detailMap, detailMarkerLayer;
 
-    function initMap() {
-      markerLayer = new ol.layer.Vector({
+    function initDetailMap() {
+      detailMarkerLayer = new ol.layer.Vector({
         source: new ol.source.Vector()
       });
-
-      map = new ol.Map({
+      detailMap = new ol.Map({
         target: "map",
         layers: [
           new ol.layer.Tile({ source: new ol.source.OSM() }),
-          markerLayer
+          detailMarkerLayer
         ],
         view: new ol.View({
           center: ol.proj.fromLonLat([-86.2660, 32.3517]),
@@ -755,25 +1022,21 @@
       });
     }
 
-    function setMapMarker(lng, lat) {
-      if (!map || !markerLayer) return;
-      markerLayer.getSource().clear();
-
+    function setDetailMapMarker(lng, lat) {
+      if (!detailMap || !detailMarkerLayer) return;
+      detailMarkerLayer.getSource().clear();
       const feature = new ol.Feature({
         geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat]))
       });
-
       feature.setStyle(new ol.style.Style({
         image: new ol.style.Circle({
-          radius: 7,
-          fill: new ol.style.Fill({ color: "#0f172a" }),
-          stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 })
+          radius: 8,
+          fill: new ol.style.Fill({ color: "#3b82f6" }),
+          stroke: new ol.style.Stroke({ color: "#ffffff", width: 2.5 })
         })
       }));
-
-      markerLayer.getSource().addFeature(feature);
-
-      map.getView().animate({
+      detailMarkerLayer.getSource().addFeature(feature);
+      detailMap.getView().animate({
         center: ol.proj.fromLonLat([lng, lat]),
         zoom: 12,
         duration: 400
@@ -781,7 +1044,93 @@
     }
 
     /*******************************
-     * DETAILS RENDER
+     * 10) OPENLAYERS — MAP SEARCH MAP
+     *******************************/
+    let searchMap, searchMarkerLayer;
+    let searchPickedCoords = null;
+
+    function initSearchMap() {
+      searchMarkerLayer = new ol.layer.Vector({
+        source: new ol.source.Vector()
+      });
+      searchMap = new ol.Map({
+        target: "mapSearchMap",
+        layers: [
+          new ol.layer.Tile({ source: new ol.source.OSM() }),
+          searchMarkerLayer
+        ],
+        view: new ol.View({
+          center: ol.proj.fromLonLat([-86.2660, 32.3517]),
+          zoom: 7
+        })
+      });
+
+      // Click to pick location
+      searchMap.on('click', function(evt) {
+        const coords = ol.proj.toLonLat(evt.coordinate);
+        const lng = coords[0];
+        const lat = coords[1];
+        searchPickedCoords = { lat, lng };
+
+        document.getElementById('mapSearchLat').value = lat.toFixed(6);
+        document.getElementById('mapSearchLng').value = lng.toFixed(6);
+        document.getElementById('mapSearchStatus').textContent = 'Location selected ✓';
+
+        // Place marker
+        searchMarkerLayer.getSource().clear();
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(evt.coordinate)
+        });
+        feature.setStyle(new ol.style.Style({
+          image: new ol.style.Icon({
+            anchor: [0.5, 1],
+            scale: 1,
+            src: 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
+                <path d="M16 0C7.16 0 0 7.16 0 16c0 12 16 24 16 24s16-12 16-24C32 7.16 24.84 0 16 0z" fill="%2310b981"/>
+                <circle cx="16" cy="14" r="6" fill="white"/>
+              </svg>
+            `)
+          })
+        }));
+        searchMarkerLayer.getSource().addFeature(feature);
+
+        // Add radius circle
+        const radiusMi = parseFloat(document.getElementById('mapSearchRadius').value) || 50;
+        drawSearchRadius(lat, lng, radiusMi);
+      });
+    }
+
+    function drawSearchRadius(lat, lng, radiusMiles) {
+      // Remove old circle features (keep only the marker)
+      const src = searchMarkerLayer.getSource();
+      const features = src.getFeatures();
+      features.forEach(f => {
+        if (f.get('isRadius')) src.removeFeature(f);
+      });
+
+      const radiusMeters = radiusMiles * 1609.34;
+      const circle = new ol.geom.Circle(ol.proj.fromLonLat([lng, lat]), radiusMeters);
+      const polyGeom = ol.geom.Polygon.fromCircle(circle, 64);
+      const feature = new ol.Feature({ geometry: polyGeom });
+      feature.set('isRadius', true);
+      feature.setStyle(new ol.style.Style({
+        fill: new ol.style.Fill({ color: 'rgba(16, 185, 129, 0.1)' }),
+        stroke: new ol.style.Stroke({ color: '#10b981', width: 2, lineDash: [6, 4] })
+      }));
+      src.addFeature(feature);
+    }
+
+    // Update radius circle when radius changes
+    document.getElementById('mapSearchRadius').addEventListener('input', () => {
+      if (searchPickedCoords) {
+        const r = parseFloat(document.getElementById('mapSearchRadius').value) || 50;
+        drawSearchRadius(searchPickedCoords.lat, searchPickedCoords.lng, r);
+      }
+    });
+
+    /*******************************
+     * 11) DETAILS RENDER
      *******************************/
     function renderDetails(doc) {
       document.getElementById("detailTitle").textContent = doc.name;
@@ -791,28 +1140,168 @@
       document.getElementById("detailLocationText").textContent = doc.locationText;
       document.getElementById("detailLatLng").textContent = `${doc.lat.toFixed(4)}, ${doc.lng.toFixed(4)}`;
       document.getElementById("detailNotes").textContent = doc.notes;
-
-      setMapMarker(doc.lng, doc.lat);
+      setDetailMapMarker(doc.lng, doc.lat);
     }
 
     function openDetails(id) {
       const doc = documents.find(d => d.id === id);
       if (!doc) return;
-
       currentDocId = id;
       showRightPane();
       renderDetails(doc);
-
-      setTimeout(() => map && map.updateSize(), 50);
+      applyFiltersAndRender(); // refresh row highlights
+      setTimeout(() => detailMap && detailMap.updateSize(), 50);
     }
 
     /*******************************
-     * MOBILE MENU
+     * 12) POPUP: MAP SEARCH
+     *******************************/
+    const mapSearchPopup = document.getElementById('mapSearchPopup');
+    let searchMapInitialized = false;
+
+    function openMapSearch() {
+      mapSearchPopup.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+      if (!searchMapInitialized) {
+        setTimeout(() => {
+          initSearchMap();
+          searchMapInitialized = true;
+        }, 100);
+      } else {
+        setTimeout(() => searchMap && searchMap.updateSize(), 100);
+      }
+    }
+
+    function closeMapSearch() {
+      mapSearchPopup.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    document.getElementById('openMapSearchBtn').addEventListener('click', openMapSearch);
+    document.getElementById('closeMapSearch').addEventListener('click', closeMapSearch);
+    document.getElementById('mapSearchBackdrop').addEventListener('click', closeMapSearch);
+
+    // Haversine distance
+    function haversine(lat1, lng1, lat2, lng2) {
+      const R = 3958.8; // Earth radius in miles
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    document.getElementById('mapSearchBtn').addEventListener('click', () => {
+      if (!searchPickedCoords) {
+        document.getElementById('mapSearchStatus').textContent = '⚠ Click on the map first to pick a location';
+        return;
+      }
+      const radius = parseFloat(document.getElementById('mapSearchRadius').value) || 50;
+      const results = documents.filter(doc => {
+        const dist = haversine(searchPickedCoords.lat, searchPickedCoords.lng, doc.lat, doc.lng);
+        return dist <= radius;
+      });
+
+      // Apply results to filter
+      document.getElementById('filterName').value = '';
+      document.getElementById('filterOwner').value = '';
+      document.getElementById('filterType').value = '';
+      document.getElementById('filterDateFrom').value = '';
+      document.getElementById('filterDateTo').value = '';
+      document.getElementById('headerSearchInput').value = '';
+
+      // Custom filter via location
+      const tbody = document.getElementById("docTableBody");
+      const sorted = sortDocuments(results);
+      renderDocumentsTable(sorted, results.length);
+
+      document.getElementById('mapSearchStatus').textContent = `Found ${results.length} document${results.length !== 1 ? 's' : ''} within ${radius} miles`;
+
+      closeMapSearch();
+
+      // Show a visual indicator
+      document.getElementById('resultInfo').textContent = `📍 Showing ${results.length} documents near selected location (${radius} mi radius)`;
+    });
+
+    document.getElementById('mapSearchClear').addEventListener('click', () => {
+      searchPickedCoords = null;
+      document.getElementById('mapSearchLat').value = '';
+      document.getElementById('mapSearchLng').value = '';
+      document.getElementById('mapSearchRadius').value = 50;
+      document.getElementById('mapSearchStatus').textContent = '';
+      if (searchMarkerLayer) searchMarkerLayer.getSource().clear();
+      if (searchMap) {
+        searchMap.getView().animate({
+          center: ol.proj.fromLonLat([-86.2660, 32.3517]),
+          zoom: 7,
+          duration: 400
+        });
+      }
+    });
+
+    /*******************************
+     * 13) POPUP: ADVANCED SEARCH
+     *******************************/
+    const advSearchPopup = document.getElementById('advSearchPopup');
+
+    function openAdvSearch() {
+      advSearchPopup.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeAdvSearch() {
+      advSearchPopup.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    document.getElementById('openAdvSearchBtn').addEventListener('click', openAdvSearch);
+    document.getElementById('closeAdvSearch').addEventListener('click', closeAdvSearch);
+    document.getElementById('advSearchBackdrop').addEventListener('click', closeAdvSearch);
+
+    document.getElementById('advSearchBtn').addEventListener('click', () => {
+      const name = document.getElementById('advSearchName').value.toLowerCase().trim();
+      const dateFrom = document.getElementById('advSearchDateFrom').value;
+      const dateTo = document.getElementById('advSearchDateTo').value;
+      const location = document.getElementById('advSearchLocation').value.toLowerCase().trim();
+      const owner = document.getElementById('advSearchOwner').value.toLowerCase().trim();
+
+      const results = documents.filter(doc => {
+        if (name && !doc.name.toLowerCase().includes(name) && !doc.id.toLowerCase().includes(name)) return false;
+        if (owner && !doc.owner.toLowerCase().includes(owner)) return false;
+        if (dateFrom && doc.date < dateFrom) return false;
+        if (dateTo && doc.date > dateTo) return false;
+        if (location && !doc.locationText.toLowerCase().includes(location)) return false;
+        return true;
+      });
+
+      // Push values to main filters
+      document.getElementById('filterName').value = name;
+      document.getElementById('filterOwner').value = owner;
+      document.getElementById('filterDateFrom').value = dateFrom;
+      document.getElementById('filterDateTo').value = dateTo;
+      document.getElementById('headerSearchInput').value = name;
+
+      const sorted = sortDocuments(results);
+      renderDocumentsTable(sorted, results.length);
+
+      document.getElementById('advSearchStatus').textContent = `Found ${results.length} document${results.length !== 1 ? 's' : ''}`;
+
+      closeAdvSearch();
+    });
+
+    document.getElementById('advSearchClear').addEventListener('click', () => {
+      document.getElementById('advSearchName').value = '';
+      document.getElementById('advSearchDateFrom').value = '';
+      document.getElementById('advSearchDateTo').value = '';
+      document.getElementById('advSearchLocation').value = '';
+      document.getElementById('advSearchOwner').value = '';
+      document.getElementById('advSearchStatus').textContent = '';
+    });
+
+    /*******************************
+     * 14) MOBILE MENU TOGGLE
      *******************************/
     function setupMobileMenu() {
       const btn = document.getElementById("mobileMenuBtn");
       const panel = document.getElementById("mobileMenuPanel");
-
       btn.addEventListener("click", () => panel.classList.toggle("hidden"));
       document.getElementById("mobileMenu").addEventListener("click", (e) => {
         const a = e.target.closest("a");
@@ -822,98 +1311,40 @@
     }
 
     /*******************************
-     * HEADER SEARCH + ICON ACTIONS
+     * 15) KEYBOARD SHORTCUTS
      *******************************/
-    function bindHeaderSearchInputs() {
-      const desktop = document.getElementById("headerSearch");
-      const mobile = document.getElementById("headerSearchMobile");
-
-      const apply = (val) => {
-        state.headerQuery = val;
-        // keep table search in sync (optional; remove if you want separate)
-        document.getElementById("tableSearch").value = val;
-        state.tableQuery = val;
-        renderDocumentsTable();
-      };
-
-      desktop.addEventListener("input", e => apply(e.target.value));
-      mobile.addEventListener("input", e => apply(e.target.value));
-    }
-
-    function bindTableFilters() {
-      document.getElementById("tableSearch").addEventListener("input", (e) => {
-        state.tableQuery = e.target.value;
-        state.headerQuery = e.target.value;
-
-        // also sync header inputs so it feels unified
-        document.getElementById("headerSearch").value = e.target.value;
-        document.getElementById("headerSearchMobile").value = e.target.value;
-
-        renderDocumentsTable();
-      });
-
-      document.getElementById("typeFilter").addEventListener("change", (e) => {
-        state.typeFilter = e.target.value;
-        renderDocumentsTable();
-      });
-
-      document.getElementById("favoritesFilter").addEventListener("change", (e) => {
-        state.favoritesFilter = e.target.value;
-        renderDocumentsTable();
-      });
-    }
-
-    function bindHeaderIconActions() {
-      const mapBtns = [
-        document.getElementById("mapSearchBtn"),
-        document.getElementById("mapSearchBtnMobile"),
-      ];
-      const advBtns = [
-        document.getElementById("advancedSearchBtn"),
-        document.getElementById("advancedSearchBtnMobile"),
-      ];
-
-      mapBtns.forEach(btn => btn.addEventListener("click", () => {
-        // Demo behavior: if a doc is selected, open details and zoom on it; else open first filtered doc.
-        const view = getViewDocuments();
-        const id = currentDocId || (view[0] && view[0].id);
-        if (id) openDetails(id);
-        else alert("No documents match your search.");
-      }));
-
-      advBtns.forEach(btn => btn.addEventListener("click", () => {
-        // Demo behavior: show a lightweight "advanced search" hint
-        alert("Advanced Search (demo): Add filters like Type + Favorites, and search across name/owner/type/location.\n\nYou can replace this with a modal later.");
-      }));
-    }
-
-    /*******************************
-     * WIRE UP UI
-     *******************************/
-    document.getElementById("openPanelIcon").addEventListener("click", () => openDetails(currentDocId || getViewDocuments()[0]?.id || documents[0].id));
-    document.getElementById("openDetailsBtn").addEventListener("click", () => openDetails(currentDocId || getViewDocuments()[0]?.id || documents[0].id));
-    document.getElementById("closeRightPane").addEventListener("click", hideRightPane);
-
-    // Theme
-    document.getElementById("themeToggle").addEventListener("click", () => {
-      const isDark = document.documentElement.classList.contains("dark");
-      applyTheme(isDark ? "light" : "dark");
+    document.addEventListener('keydown', (e) => {
+      // Escape closes popups
+      if (e.key === 'Escape') {
+        if (!mapSearchPopup.classList.contains('hidden')) closeMapSearch();
+        if (!advSearchPopup.classList.contains('hidden')) closeAdvSearch();
+      }
+      // Ctrl+K focuses search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('headerSearchInput').focus();
+      }
     });
 
-    // Init
-    applyTheme(getPreferredTheme());
+    /*******************************
+     * 16) WIRE UP + INIT
+     *******************************/
+    document.getElementById("openPanelIcon").addEventListener("click", () => {
+      openDetails(currentDocId || documents[0].id);
+    });
+    document.getElementById("openDetailsBtn").addEventListener("click", () => {
+      openDetails(currentDocId || documents[0].id);
+    });
+    document.getElementById("closeRightPane").addEventListener("click", hideRightPane);
+
+    // Initialize
+    initTheme();
     renderHeader(headerConfig);
-    setupMobileMenu();
-    initMap();
-
     populateTypeFilter();
-    setupSortButtons();
-    bindHeaderSearchInputs();
-    bindTableFilters();
-    bindHeaderIconActions();
-
-    renderDocumentsTable();
-    // openDetails(documents[0].id); // optional auto-open
+    applyFiltersAndRender();
+    updateSortUI();
+    setupMobileMenu();
+    initDetailMap();
   </script>
 </body>
 </html>

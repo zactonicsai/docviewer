@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document List + Details Panel</title>
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- OpenLayers (CDN) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css">
+  <script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+
+  <style>
+    /* OpenLayers needs explicit height for the map container */
+    #map { height: 260px; }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+  <!-- HEADER -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="flex h-16 items-center justify-between gap-3">
+        <!-- Left: Brand -->
+        <div class="flex items-center gap-3 min-w-0">
+          <div id="brandIcon" class="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 text-white text-lg font-bold"></div>
+          <div class="min-w-0">
+            <div id="brandTitle" class="font-semibold truncate"></div>
+            <div id="brandSubtitle" class="text-xs text-slate-500 truncate"></div>
+          </div>
+        </div>
+
+        <!-- Desktop Menu -->
+        <nav id="desktopMenu" class="hidden md:flex items-center gap-2"></nav>
+
+        <!-- Right: Mobile Menu Button -->
+        <button id="mobileMenuBtn"
+          class="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50"
+          aria-label="Open menu"
+        >
+          <!-- hamburger -->
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Menu Panel -->
+    <div id="mobileMenuPanel" class="md:hidden hidden border-t border-slate-200 bg-white">
+      <div id="mobileMenu" class="mx-auto max-w-7xl px-4 py-3 space-y-1"></div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Page header row -->
+    <div class="flex items-center justify-between gap-3 mb-5">
+      <div>
+        <h1 class="text-xl font-semibold">Documents</h1>
+        <p class="text-sm text-slate-600">Click a row to view details, location, and map.</p>
+      </div>
+
+      <!-- Right panel toggle icon (optional shortcut) -->
+      <button id="openDetailsBtn"
+        class="inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50"
+        title="Open details panel"
+      >
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path stroke-linecap="round" stroke-width="2" d="M10 6h10M10 12h10M10 18h10M4 6h2M4 12h2M4 18h2"/>
+        </svg>
+        <span class="text-sm">Details</span>
+      </button>
+    </div>
+
+    <!-- Two-column layout -->
+    <div id="layout" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <!-- LEFT CONTAINER -->
+      <section id="leftPane" class="lg:col-span-12">
+        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center">
+                <svg class="h-5 w-5 text-slate-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-width="2"
+                        d="M4 7a2 2 0 0 1 2-2h8l4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/>
+                  <path stroke-linecap="round" stroke-width="2" d="M14 5v4h4"/>
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold">Document List</div>
+                <div class="text-xs text-slate-500" id="docCount"></div>
+              </div>
+            </div>
+
+            <!-- icon to open right panel -->
+            <button id="openPanelIcon"
+              class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50"
+              title="Open details panel"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-width="2" d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- table -->
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-slate-600">
+                <tr class="text-left">
+                  <th class="px-4 py-3 w-28">Actions</th>
+                  <th class="px-4 py-3 w-36">Date</th>
+                  <th class="px-4 py-3">Document Name</th>
+                </tr>
+              </thead>
+              <tbody id="docTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT CONTAINER (hidden by default) -->
+      <aside id="rightPane" class="hidden lg:col-span-5">
+        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <!-- top bar -->
+          <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="h-9 w-9 rounded-xl bg-slate-900 flex items-center justify-center text-white">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-width="2" d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11z" />
+                  <path stroke-linecap="round" stroke-width="2" d="M12 10a2 2 0 1 0 0.001 0z" />
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold">Document Details</div>
+                <div class="text-xs text-slate-500">Owner, type, location, map</div>
+              </div>
+            </div>
+
+            <!-- close icon -->
+            <button id="closeRightPane"
+              class="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50"
+              title="Close details"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-width="2" d="M6 6l12 12M18 6l-12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- content -->
+          <div class="p-4 space-y-4">
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div id="detailTitle" class="text-base font-semibold truncate">Select a document</div>
+                  <div class="text-xs text-slate-600 mt-1">
+                    <span class="font-medium">Owner:</span> <span id="detailOwner">—</span>
+                    <span class="mx-2">•</span>
+                    <span class="font-medium">Type:</span> <span id="detailType">—</span>
+                  </div>
+                </div>
+                <div class="text-xs text-slate-500 text-right whitespace-nowrap">
+                  <div class="font-medium">Date</div>
+                  <div id="detailDate">—</div>
+                </div>
+              </div>
+
+              <div class="mt-3 text-sm text-slate-700">
+                <div class="font-medium text-slate-800">Location</div>
+                <div id="detailLocationText" class="mt-1">—</div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between">
+                <div class="font-semibold text-sm">Map</div>
+                <div class="text-xs text-slate-500">
+                  <span id="detailLatLng">—</span>
+                </div>
+              </div>
+              <div class="p-3 bg-white">
+                <div id="map" class="w-full rounded-xl border border-slate-200"></div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 bg-white p-4">
+              <div class="font-semibold text-sm mb-2">Notes</div>
+              <p id="detailNotes" class="text-sm text-slate-700 leading-relaxed">—</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    /*******************************
+     * 1) SAMPLE JSON DATA
+     *******************************/
+    const headerConfig = {
+      brand: {
+        title: "SecureDoc Portal",
+        subtitle: "Search & review documents securely",
+        iconText: "SD"
+      },
+      menu: [
+        { label: "Home", href: "#home", icon: "home" },
+        { label: "Documents", href: "#docs", icon: "file" },
+        { label: "Analytics", href: "#analytics", icon: "chart" },
+        { label: "Settings", href: "#settings", icon: "gear" }
+      ]
+    };
+
+    const documents = [
+      {
+        id: "DOC-1001",
+        name: "Incident Report - Warehouse 7",
+        date: "2026-01-18",
+        owner: "A. Johnson",
+        type: "Incident Report",
+        locationText: "Montgomery, AL — 1225 Air Base Blvd (Building D)",
+        lat: 32.3517,
+        lng: -86.2660,
+        notes: "Initial report created during field assessment. Includes photos, timeline, and witness statements.",
+        favorite: true
+      },
+      {
+        id: "DOC-1002",
+        name: "Safety Audit Summary - Q4",
+        date: "2026-01-10",
+        owner: "R. Williams",
+        type: "Audit Summary",
+        locationText: "Nashville, TN — Downtown Facility",
+        lat: 36.1627,
+        lng: -86.7816,
+        notes: "Audit checklist, findings, remediation plan, and compliance sign-off.",
+        favorite: false
+      },
+      {
+        id: "DOC-1003",
+        name: "Equipment Maintenance Log",
+        date: "2025-12-29",
+        owner: "S. Carter",
+        type: "Maintenance Log",
+        locationText: "Atlanta, GA — Distribution Center",
+        lat: 33.7490,
+        lng: -84.3880,
+        notes: "Preventive maintenance schedule, part replacements, and service history.",
+        favorite: false
+      },
+      {
+        id: "DOC-1004",
+        name: "Training Roster - New Hires",
+        date: "2025-12-15",
+        owner: "K. Brown",
+        type: "Training Record",
+        locationText: "Birmingham, AL — Training Lab 2",
+        lat: 33.5186,
+        lng: -86.8104,
+        notes: "Attendance roster, modules completed, certifications pending.",
+        favorite: true
+      }
+    ];
+
+    /*******************************
+     * 2) ICONS (inline SVG strings)
+     *******************************/
+    function iconSvg(name) {
+      const common = 'class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"';
+      const stroke = 'stroke-linecap="round" stroke-width="2"';
+      const icons = {
+        home: `<svg ${common}><path ${stroke} d="M3 10.5l9-7 9 7V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1v-9.5z"/></svg>`,
+        file: `<svg ${common}><path ${stroke} d="M4 7a2 2 0 0 1 2-2h8l4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/><path ${stroke} d="M14 5v4h4"/></svg>`,
+        chart:`<svg ${common}><path ${stroke} d="M4 19V5"/><path ${stroke} d="M8 19V11"/><path ${stroke} d="M12 19V9"/><path ${stroke} d="M16 19V13"/><path ${stroke} d="M20 19V7"/></svg>`,
+        gear: `<svg ${common}><path ${stroke} d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path ${stroke} d="M19.4 15a7.7 7.7 0 0 0 .1-2l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1L15 3h-6l-.4 3a7.7 7.7 0 0 0-1.7 1L4.5 6l-2 3.5 2 1.5a7.7 7.7 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a7.7 7.7 0 0 0 1.7 1L9 21h6l.4-3a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.5-2.1-1.5z"/></svg>`,
+        star: `<svg ${common}><path ${stroke} d="M12 17.3l-5.2 2.7 1-5.8L3.6 9.9l5.8-.8L12 3.8l2.6 5.3 5.8.8-4.2 4.3 1 5.8z"/></svg>`,
+        download: `<svg ${common}><path ${stroke} d="M12 3v12"/><path ${stroke} d="M7 10l5 5 5-5"/><path ${stroke} d="M5 21h14"/></svg>`,
+        info: `<svg ${common}><path ${stroke} d="M12 17v-6"/><path ${stroke} d="M12 7h.01"/><path ${stroke} d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>`
+      };
+      return icons[name] || icons.file;
+    }
+
+    /*******************************
+     * 3) HEADER RENDER FROM JSON
+     *******************************/
+    function renderHeader(cfg) {
+      document.getElementById("brandIcon").textContent = cfg.brand.iconText;
+      document.getElementById("brandTitle").textContent = cfg.brand.title;
+      document.getElementById("brandSubtitle").textContent = cfg.brand.subtitle;
+
+      const desktopMenu = document.getElementById("desktopMenu");
+      desktopMenu.innerHTML = "";
+
+      const mobileMenu = document.getElementById("mobileMenu");
+      mobileMenu.innerHTML = "";
+
+      cfg.menu.forEach(item => {
+        // desktop button-like links
+        const a = document.createElement("a");
+        a.href = item.href;
+        a.className =
+          "inline-flex items-center gap-2 h-10 px-3 rounded-xl text-sm border border-transparent hover:border-slate-200 hover:bg-slate-50";
+        a.innerHTML = `<span class="text-slate-700">${iconSvg(item.icon)}</span><span>${item.label}</span>`;
+        desktopMenu.appendChild(a);
+
+        // mobile stacked links
+        const m = document.createElement("a");
+        m.href = item.href;
+        m.className =
+          "flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200";
+        m.innerHTML = `<span class="text-slate-700">${iconSvg(item.icon)}</span><span class="text-sm">${item.label}</span>`;
+        mobileMenu.appendChild(m);
+      });
+    }
+
+    /*******************************
+     * 4) TABLE RENDER FROM JSON
+     *******************************/
+    function formatDate(iso) {
+      // simple readable format (YYYY-MM-DD -> Mon DD, YYYY)
+      const d = new Date(iso + "T00:00:00");
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+    }
+
+    function renderDocumentsTable(docs) {
+      const tbody = document.getElementById("docTableBody");
+      tbody.innerHTML = "";
+      document.getElementById("docCount").textContent = `${docs.length} documents`;
+
+      docs.forEach(doc => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50 cursor-pointer";
+
+        // actions
+        const tdActions = document.createElement("td");
+        tdActions.className = "px-4 py-3";
+        tdActions.innerHTML = `
+          <div class="flex items-center gap-2">
+            <button data-action="favorite" data-id="${doc.id}"
+              class="h-9 w-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center"
+              title="Toggle favorite"
+            >
+              <span class="${doc.favorite ? "text-amber-500" : "text-slate-500"}">${iconSvg("star")}</span>
+            </button>
+
+            <button data-action="download" data-id="${doc.id}"
+              class="h-9 w-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center"
+              title="Download"
+            >
+              <span class="text-slate-600">${iconSvg("download")}</span>
+            </button>
+
+            <button data-action="details" data-id="${doc.id}"
+              class="h-9 w-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center"
+              title="Open details"
+            >
+              <span class="text-slate-600">${iconSvg("info")}</span>
+            </button>
+          </div>
+        `;
+
+        // date
+        const tdDate = document.createElement("td");
+        tdDate.className = "px-4 py-3 text-slate-700 whitespace-nowrap";
+        tdDate.textContent = formatDate(doc.date);
+
+        // name
+        const tdName = document.createElement("td");
+        tdName.className = "px-4 py-3";
+        tdName.innerHTML = `
+          <div class="font-medium text-slate-900">${doc.name}</div>
+          <div class="text-xs text-slate-500">${doc.id}</div>
+        `;
+
+        tr.appendChild(tdActions);
+        tr.appendChild(tdDate);
+        tr.appendChild(tdName);
+
+        // row click opens details
+        tr.addEventListener("click", (e) => {
+          // If user clicked a button in actions, let button handler run
+          const btn = e.target.closest("button");
+          if (btn) return;
+          openDetails(doc.id);
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      // action button handling (delegation)
+      tbody.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+
+        const action = btn.getAttribute("data-action");
+        const id = btn.getAttribute("data-id");
+
+        if (action === "favorite") toggleFavorite(id);
+        if (action === "download") fakeDownload(id);
+        if (action === "details") openDetails(id);
+
+        e.stopPropagation();
+      }, { once: true }); // reattached on next render
+    }
+
+    function toggleFavorite(id) {
+      const doc = documents.find(d => d.id === id);
+      if (!doc) return;
+      doc.favorite = !doc.favorite;
+      renderDocumentsTable(documents);
+      // If currently showing this doc in details, refresh details UI
+      if (currentDocId === id) renderDetails(doc);
+    }
+
+    function fakeDownload(id) {
+      const doc = documents.find(d => d.id === id);
+      if (!doc) return;
+
+      // Simple demo: create a text file on the fly
+      const content = `Downloaded document:\n\n${doc.name}\nID: ${doc.id}\nOwner: ${doc.owner}\nType: ${doc.type}\nDate: ${doc.date}\nLocation: ${doc.locationText}\nLat/Lng: ${doc.lat}, ${doc.lng}\n`;
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.id}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    }
+
+    /*******************************
+     * 5) RIGHT PANE OPEN/CLOSE
+     *******************************/
+    const leftPane = document.getElementById("leftPane");
+    const rightPane = document.getElementById("rightPane");
+    let currentDocId = null;
+
+    function showRightPane() {
+      // On large screens: split view (left 7 / right 5)
+      // On small screens: right pane becomes full width below header
+      rightPane.classList.remove("hidden");
+
+      // adjust left pane span
+      leftPane.classList.remove("lg:col-span-12");
+      leftPane.classList.add("lg:col-span-7");
+
+      // show right pane span
+      rightPane.classList.remove("lg:col-span-5");
+      rightPane.classList.add("lg:col-span-5");
+    }
+
+    function hideRightPane() {
+      rightPane.classList.add("hidden");
+      leftPane.classList.remove("lg:col-span-7");
+      leftPane.classList.add("lg:col-span-12");
+      currentDocId = null;
+    }
+
+    /*******************************
+     * 6) OPENLAYERS MAP
+     *******************************/
+    let map, markerLayer;
+
+    function initMap() {
+      markerLayer = new ol.layer.Vector({
+        source: new ol.source.Vector()
+      });
+
+      map = new ol.Map({
+        target: "map",
+        layers: [
+          new ol.layer.Tile({ source: new ol.source.OSM() }),
+          markerLayer
+        ],
+        view: new ol.View({
+          center: ol.proj.fromLonLat([-86.2660, 32.3517]),
+          zoom: 10
+        })
+      });
+    }
+
+    function setMapMarker(lng, lat) {
+      if (!map || !markerLayer) return;
+
+      markerLayer.getSource().clear();
+
+      const feature = new ol.Feature({
+        geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat]))
+      });
+
+      feature.setStyle(new ol.style.Style({
+        image: new ol.style.Circle({
+          radius: 7,
+          fill: new ol.style.Fill({ color: "#0f172a" }), // slate-900
+          stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 })
+        })
+      }));
+
+      markerLayer.getSource().addFeature(feature);
+
+      map.getView().animate({
+        center: ol.proj.fromLonLat([lng, lat]),
+        zoom: 12,
+        duration: 400
+      });
+    }
+
+    /*******************************
+     * 7) DETAILS RENDER
+     *******************************/
+    function renderDetails(doc) {
+      document.getElementById("detailTitle").textContent = doc.name;
+      document.getElementById("detailOwner").textContent = doc.owner;
+      document.getElementById("detailType").textContent = doc.type;
+      document.getElementById("detailDate").textContent = formatDate(doc.date);
+      document.getElementById("detailLocationText").textContent = doc.locationText;
+      document.getElementById("detailLatLng").textContent = `${doc.lat.toFixed(4)}, ${doc.lng.toFixed(4)}`;
+      document.getElementById("detailNotes").textContent = doc.notes;
+
+      // Map marker
+      setMapMarker(doc.lng, doc.lat);
+    }
+
+    function openDetails(id) {
+      const doc = documents.find(d => d.id === id);
+      if (!doc) return;
+
+      currentDocId = id;
+      showRightPane();
+      renderDetails(doc);
+
+      // If map was initialized while pane hidden, OpenLayers may need update
+      // Small, safe refresh:
+      setTimeout(() => map && map.updateSize(), 50);
+    }
+
+    /*******************************
+     * 8) MOBILE MENU TOGGLE
+     *******************************/
+    function setupMobileMenu() {
+      const btn = document.getElementById("mobileMenuBtn");
+      const panel = document.getElementById("mobileMenuPanel");
+
+      btn.addEventListener("click", () => {
+        panel.classList.toggle("hidden");
+      });
+
+      // Close menu on navigation click
+      document.getElementById("mobileMenu").addEventListener("click", (e) => {
+        const a = e.target.closest("a");
+        if (!a) return;
+        panel.classList.add("hidden");
+      });
+    }
+
+    /*******************************
+     * 9) WIRE UP UI
+     *******************************/
+    document.getElementById("openPanelIcon").addEventListener("click", () => {
+      // open with first doc as sample if none selected
+      openDetails(currentDocId || documents[0].id);
+    });
+
+    document.getElementById("openDetailsBtn").addEventListener("click", () => {
+      openDetails(currentDocId || documents[0].id);
+    });
+
+    document.getElementById("closeRightPane").addEventListener("click", hideRightPane);
+
+    // Initialize
+    renderHeader(headerConfig);
+    renderDocumentsTable(documents);
+    setupMobileMenu();
+    initMap();
+
+    // Optional: start with right pane hidden; you can auto-open first doc by uncommenting:
+    // openDetails(documents[0].id);
+  </script>
+</body>
+</html>

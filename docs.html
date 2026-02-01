@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SecureDoc Portal — Code Review Deep Dive</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{display:['"Fraunces"','Georgia','serif'],body:['"DM Sans"','system-ui','sans-serif'],mono:['"JetBrains Mono"','Consolas','monospace']},colors:{ink:'#1a1612',parchment:'#FFFCF7',warmgray:{50:'#FAF8F5',100:'#F3EFEA',200:'#E8E2DA',300:'#D5CCC0',400:'#B8ACA0',500:'#9A8E82',600:'#7A6F64',700:'#5C534A',800:'#3E3731',900:'#21201E'}}}}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{font-family:'DM Sans',system-ui,sans-serif}
+html{scroll-behavior:smooth}
+html,body,div,section,aside,header,main,nav,h1,h2,h3,h4,p,span,a,button,code,pre{transition:background-color .35s ease,color .35s ease,border-color .35s ease,box-shadow .35s ease}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#D5CCC0;border-radius:99px}
+.dark ::-webkit-scrollbar-thumb{background:#3E3731}
+.font-display{font-family:'Fraunces',Georgia,serif}
+code,.font-mono{font-family:'JetBrains Mono',Consolas,monospace}
+
+/* Card shine on hover */
+.card-shine{position:relative;overflow:hidden}
+.card-shine::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,0.06) 0%,transparent 60%);pointer-events:none;opacity:0;transition:opacity .4s ease}
+.card-shine:hover::before{opacity:1}
+.dark .card-shine::before{background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,0.03) 0%,transparent 60%)}
+
+/* Section number */
+.sect-num{font-family:'Fraunces',Georgia,serif;font-weight:300;font-style:italic;opacity:.18;font-size:4rem;line-height:1;position:absolute;top:-8px;right:12px;pointer-events:none;user-select:none}
+.dark .sect-num{opacity:.08}
+
+/* Modal */
+.modal-backdrop{background:rgba(26,22,18,.55);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%)}
+.dark .modal-backdrop{background:rgba(0,0,0,.65)}
+.modal-enter{animation:modalIn .4s cubic-bezier(.16,1,.3,1)}
+@keyframes modalIn{from{opacity:0;transform:translateY(40px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.modal-exit{animation:modalOut .25s ease-in forwards}
+@keyframes modalOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(20px) scale(.98)}}
+
+/* Code blocks */
+pre.code-block{background:#1e1e2e;color:#cdd6f4;border-radius:12px;padding:20px 24px;overflow-x:auto;font-size:13px;line-height:1.7;border:1px solid #313244;position:relative}
+pre.code-block .kw{color:#cba6f7}
+pre.code-block .str{color:#a6e3a1}
+pre.code-block .cm{color:#6c7086;font-style:italic}
+pre.code-block .fn{color:#89b4fa}
+pre.code-block .num{color:#fab387}
+pre.code-block .tag{color:#f38ba8}
+pre.code-block .attr{color:#89dceb}
+pre.code-block .val{color:#a6e3a1}
+pre.code-block .op{color:#94e2d5}
+pre.code-block::before{content:attr(data-label);position:absolute;top:0;right:0;background:#313244;color:#6c7086;font-size:10px;padding:4px 12px;border-radius:0 12px 0 8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+
+/* TOC active marker */
+.toc-item{position:relative;padding-left:16px;border-left:2px solid transparent;transition:all .2s ease}
+.toc-item:hover{border-left-color:#D5CCC0}
+.dark .toc-item:hover{border-left-color:#3E3731}
+.toc-item.active{border-left-color:#b45309;color:#b45309;font-weight:600}
+.dark .toc-item.active{border-left-color:#f59e0b;color:#f59e0b}
+
+/* Callout boxes */
+.callout{border-radius:12px;padding:16px 20px;position:relative;border-left:4px solid}
+.callout-info{background:#eff6ff;border-left-color:#3b82f6;color:#1e40af}
+.dark .callout-info{background:#172554;border-left-color:#60a5fa;color:#93c5fd}
+.callout-warn{background:#fffbeb;border-left-color:#f59e0b;color:#92400e}
+.dark .callout-warn{background:#422006;border-left-color:#fbbf24;color:#fcd34d}
+.callout-tip{background:#f0fdf4;border-left-color:#22c55e;color:#166534}
+.dark .callout-tip{background:#052e16;border-left-color:#4ade80;color:#86efac}
+
+/* Tag pills */
+.tag-pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600;letter-spacing:.03em}
+
+/* Stagger animation */
+.stagger-in{opacity:0;transform:translateY(20px);animation:staggerUp .5s ease forwards}
+@keyframes staggerUp{to{opacity:1;transform:translateY(0)}}
+
+/* Links in modals */
+.ref-link{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;border:1px solid #E8E2DA;transition:all .2s ease;text-decoration:none}
+.ref-link:hover{border-color:#b45309;background:#FFFBF5;transform:translateX(4px)}
+.dark .ref-link{border-color:#3E3731}
+.dark .ref-link:hover{border-color:#f59e0b;background:#21201E}
+
+/* Header underline accent */
+.accent-line{width:60px;height:3px;border-radius:99px;background:linear-gradient(90deg,#b45309,#d97706)}
+.dark .accent-line{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+
+/* Pulse dot for "live" lines indicator */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.pulse-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 2s ease infinite}
+</style>
+</head>
+
+<body class="bg-parchment text-ink dark:bg-warmgray-900 dark:text-warmgray-100 font-body">
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="sticky top-0 z-50 border-b border-warmgray-200 dark:border-warmgray-800" style="background:rgba(255,252,247,.88);backdrop-filter:blur(16px) saturate(180%);-webkit-backdrop-filter:blur(16px) saturate(180%)">
+  <div class="dark:hidden" style="position:absolute;inset:0;background:rgba(255,252,247,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:-1"></div>
+  <div class="hidden dark:block" style="position:absolute;inset:0;background:rgba(33,32,30,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:-1"></div>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex h-16 items-center justify-between gap-4">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 dark:from-amber-500 dark:to-amber-700 flex items-center justify-center text-white text-xs font-bold shadow-md flex-shrink-0">CR</div>
+        <div class="min-w-0 hidden sm:block">
+          <div class="font-display font-semibold text-sm truncate dark:text-warmgray-100">SecureDoc Portal</div>
+          <div class="text-[11px] text-warmgray-500 dark:text-warmgray-400 truncate">Code Review &amp; Deep Dive</div>
+          <div><a href="/">Back Home</a></div>       
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="hidden md:flex items-center gap-1.5 text-xs text-warmgray-500 dark:text-warmgray-400 mr-2"><span class="pulse-dot"></span><span class="font-mono">718 lines</span> reviewed</span>
+        <button id="tocToggle" class="lg:hidden h-10 w-10 rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 hover:bg-warmgray-50 dark:hover:bg-warmgray-700 flex items-center justify-center transition-colors" aria-label="Table of contents">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+        </button>
+        <button id="themeToggle" class="h-10 w-10 rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 hover:bg-warmgray-50 dark:hover:bg-warmgray-700 flex items-center justify-center transition-colors" title="Toggle theme">
+          <svg id="sunIcon" class="h-5 w-5 text-amber-500 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <svg id="moonIcon" class="h-5 w-5 text-amber-700 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════ LAYOUT ═══════════ -->
+<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+  <div class="lg:grid lg:grid-cols-12 lg:gap-8">
+
+    <!-- TOC SIDEBAR -->
+    <aside id="tocSidebar" class="hidden lg:block lg:col-span-3">
+      <div class="sticky top-24">
+        <div class="text-[10px] font-semibold text-warmgray-400 dark:text-warmgray-500 uppercase tracking-[.15em] mb-4">Table of Contents</div>
+        <nav id="tocNav" class="space-y-1 max-h-[calc(100vh-140px)] overflow-y-auto pr-2"></nav>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main id="mainContent" class="lg:col-span-9">
+
+      <!-- HERO -->
+      <section class="mb-12">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="tag-pill bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">Technical Review</span>
+          <span class="tag-pill bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-600 dark:text-warmgray-400 border border-warmgray-200 dark:border-warmgray-700">index.html</span>
+          <span class="tag-pill bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-600 dark:text-warmgray-400 border border-warmgray-200 dark:border-warmgray-700">718 Lines</span>
+        </div>
+        <h1 class="font-display text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-4">
+          <span class="text-warmgray-900 dark:text-warmgray-50">SecureDoc Portal</span><br/>
+          <span class="text-amber-700 dark:text-amber-400" style="font-style:italic;font-weight:400">Comprehensive Code Review</span>
+        </h1>
+        <div class="accent-line mb-6"></div>
+        <p class="text-warmgray-600 dark:text-warmgray-400 text-lg leading-relaxed max-w-2xl">A line-by-line deep dive into a single-page document management portal built with HTML5, Tailwind CSS, vanilla JavaScript, and OpenLayers. Every pattern, every design decision, explained.</p>
+
+        <div class="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 p-4">
+            <div class="text-[10px] font-semibold text-warmgray-400 dark:text-warmgray-500 uppercase tracking-wider mb-1">Stack</div>
+            <div class="text-sm font-semibold dark:text-warmgray-200">HTML · CSS · JS</div>
+          </div>
+          <div class="rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 p-4">
+            <div class="text-[10px] font-semibold text-warmgray-400 dark:text-warmgray-500 uppercase tracking-wider mb-1">Framework</div>
+            <div class="text-sm font-semibold dark:text-warmgray-200">Tailwind CDN</div>
+          </div>
+          <div class="rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 p-4">
+            <div class="text-[10px] font-semibold text-warmgray-400 dark:text-warmgray-500 uppercase tracking-wider mb-1">Maps</div>
+            <div class="text-sm font-semibold dark:text-warmgray-200">OpenLayers</div>
+          </div>
+          <div class="rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 p-4">
+            <div class="text-[10px] font-semibold text-warmgray-400 dark:text-warmgray-500 uppercase tracking-wider mb-1">Sections</div>
+            <div class="text-sm font-semibold dark:text-warmgray-200" id="sectionCountHero">—</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION CARDS GRID -->
+      <div id="sectionsGrid" class="space-y-4"></div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════ MOBILE TOC PANEL ═══════════ -->
+<div id="mobileTocPanel" class="fixed inset-0 z-[90] hidden">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="mobileTocBackdrop"></div>
+  <div class="absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-parchment dark:bg-warmgray-900 border-r border-warmgray-200 dark:border-warmgray-700 shadow-2xl overflow-y-auto p-6 pt-20" style="animation:slideInLeft .3s ease">
+    <div class="text-[10px] font-semibold text-warmgray-400 dark:text-warmgray-500 uppercase tracking-[.15em] mb-4">Table of Contents</div>
+    <nav id="mobileTocNav" class="space-y-1"></nav>
+  </div>
+</div>
+<style>@keyframes slideInLeft{from{transform:translateX(-100%)}to{transform:translateX(0)}}</style>
+
+<!-- ═══════════ DETAIL MODAL ═══════════ -->
+<div id="detailModal" class="fixed inset-0 z-[100] hidden">
+  <div class="modal-backdrop absolute inset-0" id="modalBackdrop"></div>
+  <div class="absolute inset-0 flex items-end sm:items-center justify-center p-0 sm:p-6 pointer-events-none">
+    <div id="modalCard" class="modal-enter pointer-events-auto w-full sm:max-w-4xl max-h-[92vh] sm:max-h-[88vh] bg-parchment dark:bg-warmgray-900 sm:rounded-3xl shadow-2xl border-0 sm:border border-warmgray-200 dark:border-warmgray-700 overflow-hidden flex flex-col rounded-t-3xl">
+      <!-- Modal Header -->
+      <div id="modalHeader" class="flex-shrink-0 px-6 sm:px-8 py-5 border-b border-warmgray-200 dark:border-warmgray-700 flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span id="modalNum" class="font-display text-amber-600 dark:text-amber-400 text-sm font-semibold italic"></span>
+            <span id="modalLines" class="tag-pill bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-500 dark:text-warmgray-400 border border-warmgray-200 dark:border-warmgray-700 font-mono text-[10px]"></span>
+          </div>
+          <h2 id="modalTitle" class="font-display text-xl sm:text-2xl font-bold dark:text-warmgray-50"></h2>
+          <div id="modalTags" class="flex flex-wrap gap-1.5 mt-2"></div>
+        </div>
+        <button id="modalClose" class="flex-shrink-0 h-10 w-10 rounded-xl border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 hover:bg-warmgray-50 dark:hover:bg-warmgray-700 flex items-center justify-center transition-colors" title="Close">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <!-- Modal Body -->
+      <div id="modalBody" class="flex-1 overflow-y-auto px-6 sm:px-8 py-6"></div>
+      <!-- Modal Footer -->
+      <div id="modalFooter" class="flex-shrink-0 px-6 sm:px-8 py-4 border-t border-warmgray-100 dark:border-warmgray-800 bg-warmgray-50/60 dark:bg-warmgray-800/40 flex items-center justify-between gap-3">
+        <button id="modalPrev" class="text-sm text-warmgray-500 dark:text-warmgray-400 hover:text-amber-700 dark:hover:text-amber-400 flex items-center gap-1 transition-colors"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>Previous</button>
+        <button id="modalNext" class="text-sm text-warmgray-500 dark:text-warmgray-400 hover:text-amber-700 dark:hover:text-amber-400 flex items-center gap-1 transition-colors">Next<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ JAVASCRIPT ═══════════ -->
+<script>
+/* ===== SECTION DATA ===== */
+const SECTIONS=[
+// ──────────────────────────────────────────
+{
+id:'architecture',num:'01',title:'Architecture Overview',lines:'1–718 (entire file)',
+accent:'amber',
+tags:['SPA','Single File','Zero Build Step','HTML5'],
+summary:'A zero-dependency single-page application in one HTML file. The entire stack — markup, styles, and behavior — is self-contained for instant deployment without servers, bundlers, or compilation steps.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Single-File SPA Design</h3>
+<p class="mb-4 leading-relaxed text-warmgray-700 dark:text-warmgray-300">This application represents a deliberate architectural choice: the <strong>entire application</strong> — HTML markup, CSS styles, and JavaScript behavior — lives inside a single <code class="px-1.5 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 text-sm font-mono">index.html</code> file spanning 718 lines. This isn't a limitation; it's a strategy.</p>
+
+<div class="callout callout-tip mb-4">
+<strong>Why single-file?</strong> The file can be opened directly in a browser, emailed as an attachment, dropped onto any static host (S3, GitHub Pages, Netlify), or served from a USB drive. No Node.js, no npm install, no Webpack, no build pipeline. This makes it ideal for internal tools, prototypes, and situations where infrastructure overhead is unjustified.
+</div>
+
+<h4 class="font-semibold text-sm uppercase tracking-wider text-warmgray-500 dark:text-warmgray-400 mb-3 mt-6">Core Feature Matrix</h4>
+<div class="overflow-x-auto mb-4">
+<table class="w-full text-sm border border-warmgray-200 dark:border-warmgray-700 rounded-xl overflow-hidden">
+<thead><tr class="bg-warmgray-50 dark:bg-warmgray-800 text-left"><th class="px-4 py-3 font-semibold">Feature</th><th class="px-4 py-3 font-semibold">Implementation</th><th class="px-4 py-3 font-semibold">Lines</th></tr></thead>
+<tbody class="divide-y divide-warmgray-100 dark:divide-warmgray-800">
+<tr><td class="px-4 py-2.5">Sortable data table</td><td class="px-4 py-2.5">Custom JS comparator with toggle direction</td><td class="px-4 py-2.5 font-mono text-xs">395–399</td></tr>
+<tr><td class="px-4 py-2.5">Real-time filtering</td><td class="px-4 py-2.5">Multi-field AND filter with input events</td><td class="px-4 py-2.5 font-mono text-xs">401–407</td></tr>
+<tr><td class="px-4 py-2.5">Split-pane layout</td><td class="px-4 py-2.5">CSS Grid 12-column with JS toggle</td><td class="px-4 py-2.5 font-mono text-xs">223–314</td></tr>
+<tr><td class="px-4 py-2.5">Mobile inline accordion</td><td class="px-4 py-2.5">Dynamic TR injection with CSS max-height</td><td class="px-4 py-2.5 font-mono text-xs">413–533</td></tr>
+<tr><td class="px-4 py-2.5">Map-based geosearch</td><td class="px-4 py-2.5">OpenLayers + Haversine formula</td><td class="px-4 py-2.5 font-mono text-xs">591–678</td></tr>
+<tr><td class="px-4 py-2.5">Dark/light theme</td><td class="px-4 py-2.5">Class-based toggle + localStorage</td><td class="px-4 py-2.5 font-mono text-xs">390–393</td></tr>
+<tr><td class="px-4 py-2.5">Keyboard shortcuts</td><td class="px-4 py-2.5">Escape close + Ctrl+K search focus</td><td class="px-4 py-2.5 font-mono text-xs">701–702</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4 class="font-semibold text-sm uppercase tracking-wider text-warmgray-500 dark:text-warmgray-400 mb-3 mt-6">Technology Selection Rationale</h4>
+<div class="overflow-x-auto mb-4">
+<table class="w-full text-sm border border-warmgray-200 dark:border-warmgray-700 rounded-xl overflow-hidden">
+<thead><tr class="bg-warmgray-50 dark:bg-warmgray-800 text-left"><th class="px-4 py-3 font-semibold">Technology</th><th class="px-4 py-3 font-semibold">Role</th><th class="px-4 py-3 font-semibold">Why Chosen Over Alternatives</th></tr></thead>
+<tbody class="divide-y divide-warmgray-100 dark:divide-warmgray-800">
+<tr><td class="px-4 py-2.5 font-semibold">Tailwind CSS (CDN)</td><td class="px-4 py-2.5">Styling</td><td class="px-4 py-2.5">No build step; consistent design tokens; rapid iteration. Chosen over Bootstrap (opinionated components) and vanilla CSS (slower development).</td></tr>
+<tr><td class="px-4 py-2.5 font-semibold">OpenLayers</td><td class="px-4 py-2.5">Maps</td><td class="px-4 py-2.5">No API key; free OSM tiles; rich vector drawing for radius circles. Chosen over Google Maps (requires billing) and Mapbox (proprietary license v2+).</td></tr>
+<tr><td class="px-4 py-2.5 font-semibold">Vanilla JavaScript</td><td class="px-4 py-2.5">Logic</td><td class="px-4 py-2.5">Small scope doesn't justify React/Vue overhead. Full control over DOM lifecycle. No virtual DOM abstraction layer.</td></tr>
+<tr><td class="px-4 py-2.5 font-semibold">Google Fonts</td><td class="px-4 py-2.5">Typography</td><td class="px-4 py-2.5">Free CDN delivery; variable font support; no self-hosting needed.</td></tr>
+</tbody>
+</table>
+</div>
+`,
+links:[
+{label:'HTML Living Standard',url:'https://html.spec.whatwg.org/'},
+{label:'MDN — Single Page Applications',url:'https://developer.mozilla.org/en-US/docs/Glossary/SPA'},
+{label:'Tailwind CSS Docs',url:'https://tailwindcss.com/docs'},
+{label:'OpenLayers Documentation',url:'https://openlayers.org/en/latest/doc/'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'doctype-meta',num:'02',title:'DOCTYPE, Meta Tags & Document Setup',lines:'1–6',
+accent:'slate',
+tags:['HTML5','Accessibility','Viewport','UTF-8','SEO'],
+summary:'The foundational lines that tell the browser how to render the page — standards mode, character encoding, responsive viewport, and accessible language declaration. Getting these wrong breaks everything downstream.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Line-by-Line Breakdown</h3>
+
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;!doctype html&gt;</span>
+<span class="tag">&lt;html</span> <span class="attr">lang</span>=<span class="val">"en"</span><span class="tag">&gt;</span>
+<span class="tag">&lt;head&gt;</span>
+  <span class="tag">&lt;meta</span> <span class="attr">charset</span>=<span class="val">"UTF-8"</span> <span class="tag">/&gt;</span>
+  <span class="tag">&lt;meta</span> <span class="attr">name</span>=<span class="val">"viewport"</span> <span class="attr">content</span>=<span class="val">"width=device-width, initial-scale=1.0"</span> <span class="tag">/&gt;</span>
+  <span class="tag">&lt;title&gt;</span>SecureDoc Portal<span class="tag">&lt;/title&gt;</span></pre>
+
+<h4 class="font-semibold mb-2 dark:text-warmgray-100">DOCTYPE Declaration (Line 1)</h4>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code class="px-1.5 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 text-sm font-mono">&lt;!doctype html&gt;</code> instruction forces the browser into <strong>standards mode</strong> rather than "quirks mode." Quirks mode emulates legacy browser behaviors from the early 2000s — different box model calculations, different table layouts, different inline element handling. Without the DOCTYPE, modern CSS features like Flexbox and Grid may behave unpredictably. The lowercase form is valid per HTML5 spec and common in modern tooling.</p>
+
+<h4 class="font-semibold mb-2 dark:text-warmgray-100">Language Attribute (Line 2)</h4>
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code class="px-1.5 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 text-sm font-mono">lang="en"</code> serves three critical purposes:</p>
+<ul class="list-disc list-inside mb-4 space-y-1 text-warmgray-700 dark:text-warmgray-300 text-sm">
+<li><strong>Accessibility:</strong> Screen readers (NVDA, JAWS, VoiceOver) select the correct pronunciation engine</li>
+<li><strong>SEO:</strong> Search engines serve the page to users searching in the correct language</li>
+<li><strong>CSS:</strong> Enables the <code class="px-1 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 font-mono text-xs">:lang(en)</code> pseudo-class for language-specific styling</li>
+</ul>
+<div class="callout callout-info mb-4">
+<strong>Dark mode hook:</strong> This <code>&lt;html&gt;</code> element is also the target for the dark mode class toggle. JavaScript adds <code>class="dark"</code> here, which cascades through Tailwind's <code>dark:</code> variant system to every element on the page.
+</div>
+
+<h4 class="font-semibold mb-2 dark:text-warmgray-100">Character Encoding (Line 4)</h4>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code class="px-1.5 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 text-sm font-mono">charset="UTF-8"</code> declares Unicode encoding supporting 149,000+ characters across 159 scripts. The app uses special characters (✓, ⚠, ↑, ↓, •) that would corrupt without UTF-8. This meta tag <strong>must appear within the first 1024 bytes</strong> of the document for browsers to detect it in time.</p>
+
+<h4 class="font-semibold mb-2 dark:text-warmgray-100">Viewport Meta (Line 5)</h4>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Without this tag, mobile browsers render at a virtual 980px width and scale down, making text unreadable. <code class="px-1.5 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 text-sm font-mono">width=device-width</code> matches the physical screen width; <code class="px-1.5 py-0.5 rounded bg-warmgray-100 dark:bg-warmgray-800 text-sm font-mono">initial-scale=1.0</code> sets 100% initial zoom. This is a <strong>prerequisite</strong> for all Tailwind responsive breakpoints (<code>sm:</code>, <code>md:</code>, <code>lg:</code>) to work correctly.</p>
+
+<div class="callout callout-warn mb-4">
+<strong>Common mistake:</strong> Omitting the viewport meta is the #1 reason responsive designs "work on desktop but not mobile." Without it, <code>@media (max-width: 768px)</code> triggers against the virtual 980px viewport, not the real device width.
+</div>
+
+<h4 class="font-semibold mb-2 dark:text-warmgray-100">Page Title (Line 6)</h4>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Defines the browser tab label, bookmark name, search engine result heading, and the text screen readers announce when switching tabs. Concise and descriptive.</p>
+`,
+links:[
+{label:'HTML5 DOCTYPE — MDN',url:'https://developer.mozilla.org/en-US/docs/Glossary/Doctype'},
+{label:'lang attribute — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang'},
+{label:'Viewport meta — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'},
+{label:'Character encoding — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#charset'},
+{label:'Quirks Mode — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/HTML/Quirks_Mode_and_Standards_Mode'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'tailwind-config',num:'03',title:'Tailwind CSS CDN & Configuration',lines:'8–23',
+accent:'sky',
+tags:['Tailwind CSS','CDN','Dark Mode','Custom Fonts','Design Tokens'],
+summary:'Loads the Tailwind Play CDN runtime and configures class-based dark mode with custom font families. The CDN approach trades a ~350KB JS runtime for zero build-step deployment — an intentional trade-off for prototyping.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">CDN vs. Build Step</h3>
+<pre class="code-block mb-4" data-label="HTML + JS"><span class="cm">&lt;!-- Tailwind (CDN) --&gt;</span>
+<span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="val">"https://cdn.tailwindcss.com"</span><span class="tag">&gt;&lt;/script&gt;</span>
+<span class="tag">&lt;script&gt;</span>
+  tailwind.config <span class="op">=</span> {
+    <span class="attr">darkMode</span>: <span class="str">'class'</span>,
+    <span class="attr">theme</span>: {
+      <span class="fn">extend</span>: {
+        <span class="attr">fontFamily</span>: {
+          <span class="attr">display</span>: [<span class="str">'"DM Sans"'</span>, <span class="str">'sans-serif'</span>],
+          <span class="attr">body</span>:    [<span class="str">'"DM Sans"'</span>, <span class="str">'sans-serif'</span>],
+          <span class="attr">mono</span>:    [<span class="str">'"JetBrains Mono"'</span>, <span class="str">'monospace'</span>]
+        }
+      }
+    }
+  }
+<span class="tag">&lt;/script&gt;</span></pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The Tailwind Play CDN is a <strong>JavaScript runtime</strong>, not a static stylesheet. It scans the DOM for Tailwind class names, dynamically generates CSS rules, injects them into a <code>&lt;style&gt;</code> element, and observes DOM mutations to handle dynamically added classes. This is ~350KB of JavaScript versus a typical production build of ~10–30KB of CSS.</p>
+
+<div class="callout callout-warn mb-4">
+<strong>Production note:</strong> The CDN is explicitly for development and prototyping. For production, use the PostCSS build pipeline which tree-shakes unused classes and produces a minimal CSS file.
+</div>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">Configuration Deep Dive</h4>
+
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong><code>darkMode: 'class'</code></strong> — Activates dark-mode variants (<code>dark:bg-slate-900</code>) when the CSS class <code>dark</code> is present on a parent element. The alternative, <code>'media'</code>, ties dark mode to the OS <code>prefers-color-scheme</code> setting with no user override. The <code>'class'</code> strategy was chosen to give users explicit toggle control while still defaulting to the OS preference (see Section 18).</p>
+
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong><code>theme.extend.fontFamily</code></strong> — The <code>extend</code> key is critical: it <em>adds</em> custom font families without replacing Tailwind's defaults (<code>font-sans</code>, <code>font-serif</code>, <code>font-mono</code> still work). The double-quoted names (<code>'"DM Sans"'</code>) are necessary because CSS font names with spaces require quotes — the outer JS quotes wrap inner CSS quotes.</p>
+
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Three families are defined: <strong>DM Sans</strong> for both display headings and body text (consistency through weight variation), and <strong>JetBrains Mono</strong> for code — document IDs, coordinates, and any fixed-width content where character alignment matters.</p>
+`,
+links:[
+{label:'Tailwind Play CDN',url:'https://tailwindcss.com/docs/installation/play-cdn'},
+{label:'Dark Mode Configuration',url:'https://tailwindcss.com/docs/dark-mode'},
+{label:'Customizing Font Families',url:'https://tailwindcss.com/docs/font-family'},
+{label:'Theme Configuration',url:'https://tailwindcss.com/docs/theme'},
+{label:'Tailwind CSS IntelliSense (VS Code)',url:'https://tailwindcss.com/docs/editor-setup'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'google-fonts',num:'04',title:'Google Fonts & Typography Strategy',lines:'25–28',
+accent:'rose',
+tags:['Google Fonts','Preconnect','Variable Fonts','FOUT','Performance'],
+summary:'Loads DM Sans (variable weight geometric sans-serif) and JetBrains Mono (ligature-enabled monospace) via the CSS2 API with preconnect hints to eliminate 100–300ms of connection latency.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Font Loading Strategy</h3>
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;link</span> <span class="attr">rel</span>=<span class="val">"preconnect"</span> <span class="attr">href</span>=<span class="val">"https://fonts.googleapis.com"</span><span class="tag">&gt;</span>
+<span class="tag">&lt;link</span> <span class="attr">rel</span>=<span class="val">"preconnect"</span> <span class="attr">href</span>=<span class="val">"https://fonts.gstatic.com"</span> <span class="attr">crossorigin</span><span class="tag">&gt;</span>
+<span class="tag">&lt;link</span> <span class="attr">href</span>=<span class="val">"https://fonts.googleapis.com/css2?family=DM+Sans:...&amp;display=swap"</span>
+      <span class="attr">rel</span>=<span class="val">"stylesheet"</span><span class="tag">&gt;</span></pre>
+
+<h4 class="font-semibold mb-2 dark:text-warmgray-100">Preconnect Hints</h4>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Two separate preconnects target Google Fonts' two-domain architecture: <code>fonts.googleapis.com</code> serves the CSS stylesheet with <code>@font-face</code> declarations, while <code>fonts.gstatic.com</code> serves the actual <code>.woff2</code> binary font files. Each preconnect performs DNS lookup + TCP handshake + TLS negotiation proactively, saving 100–300ms.</p>
+
+<div class="callout callout-info mb-4">
+<strong>Why <code>crossorigin</code> on the second link?</strong> Font files are fetched using CORS anonymous mode per the browser's font-loading spec. Without <code>crossorigin</code>, the preconnection is made without CORS headers — the browser discards it and opens a <em>new</em> connection when the font is actually requested, negating the preconnect entirely.
+</div>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">Font Specifications</h4>
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong>DM Sans</strong> — A geometric sans-serif with variable axes: optical size (9–40), weight (300–700), and italic. Using one font for both display and body creates visual consistency; hierarchy is achieved through weight alone (300 light → 700 bold).</p>
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong>JetBrains Mono</strong> — A monospaced font designed for code readability, requested at weights 400–500. Used for document IDs (<code>DOC-1001</code>) and coordinates where equal character width ensures alignment.</p>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">The <code>display=swap</code> Strategy</h4>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Tells the browser to immediately render text with a fallback system font, then swap in the custom font once loaded. This prevents the "Flash of Invisible Text" (FOIT) where text disappears during download. The trade-off is a brief "Flash of Unstyled Text" (FOUT), which is preferred for content-heavy applications where usability during load is paramount.</p>
+`,
+links:[
+{label:'Google Fonts',url:'https://fonts.google.com/'},
+{label:'DM Sans Specimen',url:'https://fonts.google.com/specimen/DM+Sans'},
+{label:'JetBrains Mono Specimen',url:'https://fonts.google.com/specimen/JetBrains+Mono'},
+{label:'CSS2 API Reference',url:'https://developers.google.com/fonts/docs/css2'},
+{label:'font-display — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display'},
+{label:'Preconnect — web.dev',url:'https://web.dev/articles/preconnect-and-dns-prefetch'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'openlayers',num:'05',title:'OpenLayers Map Library',lines:'30–32',
+accent:'emerald',
+tags:['OpenLayers','OSM','CDN','BSD License','No API Key'],
+summary:'Loads the OpenLayers library for interactive map rendering with OpenStreetMap tiles. Zero cost, no API key, permissive BSD license — chosen over Google Maps (billable) and Mapbox (proprietary license).',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Why OpenLayers?</h3>
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;link</span> <span class="attr">rel</span>=<span class="val">"stylesheet"</span> <span class="attr">href</span>=<span class="val">"https://cdn.jsdelivr.net/npm/ol@latest/ol.css"</span><span class="tag">&gt;</span>
+<span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="val">"https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"</span><span class="tag">&gt;&lt;/script&gt;</span></pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The CSS file is required for the map viewport, zoom controls, and attribution text to render correctly. Without it, the map container collapses and controls become invisible. The JS file provides the full OpenLayers API for tile rendering, vector drawing, projections, and interactivity.</p>
+
+<div class="overflow-x-auto mb-4">
+<table class="w-full text-sm border border-warmgray-200 dark:border-warmgray-700 rounded-xl overflow-hidden">
+<thead><tr class="bg-warmgray-50 dark:bg-warmgray-800 text-left"><th class="px-4 py-3 font-semibold">Library</th><th class="px-4 py-3 font-semibold">API Key?</th><th class="px-4 py-3 font-semibold">License</th><th class="px-4 py-3 font-semibold">Verdict</th></tr></thead>
+<tbody class="divide-y divide-warmgray-100 dark:divide-warmgray-800">
+<tr class="bg-emerald-50/50 dark:bg-emerald-950/20"><td class="px-4 py-2.5 font-semibold">OpenLayers</td><td class="px-4 py-2.5">No</td><td class="px-4 py-2.5">BSD 2-Clause</td><td class="px-4 py-2.5 text-emerald-700 dark:text-emerald-400 font-semibold">✓ Chosen</td></tr>
+<tr><td class="px-4 py-2.5">Google Maps JS</td><td class="px-4 py-2.5">Yes (billable)</td><td class="px-4 py-2.5">Proprietary</td><td class="px-4 py-2.5 text-warmgray-500">Cost at scale</td></tr>
+<tr><td class="px-4 py-2.5">Mapbox GL JS</td><td class="px-4 py-2.5">Yes (free tier)</td><td class="px-4 py-2.5">Proprietary (v2+)</td><td class="px-4 py-2.5 text-warmgray-500">License change risk</td></tr>
+<tr><td class="px-4 py-2.5">Leaflet</td><td class="px-4 py-2.5">No</td><td class="px-4 py-2.5">BSD 2-Clause</td><td class="px-4 py-2.5 text-warmgray-500">Less built-in vector support</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout callout-warn mb-4">
+<strong>Version pinning:</strong> The <code>@latest</code> tag means every page load could pull a different version. For production, pin to a specific version (e.g., <code>@9.2.4</code>) to prevent breaking changes from unexpected updates.
+</div>
+`,
+links:[
+{label:'OpenLayers Official Docs',url:'https://openlayers.org/en/latest/doc/'},
+{label:'OpenLayers API Reference',url:'https://openlayers.org/en/latest/apidoc/'},
+{label:'OpenStreetMap Tile Policy',url:'https://operations.osmfoundation.org/policies/tiles/'},
+{label:'EPSG:3857 (Web Mercator)',url:'https://epsg.io/3857'},
+{label:'EPSG:4326 (WGS 84)',url:'https://epsg.io/4326'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'css-transitions',num:'06',title:'Custom CSS — Theme Transitions & Scrollbars',lines:'34–54',
+accent:'violet',
+tags:['CSS Transitions','Scrollbar','Dark Mode','UX Polish','Performance'],
+summary:'Applies 300ms color transitions to all structural elements for smooth theme switching, plus custom slim scrollbar styling for WebKit browsers. Every theme toggle feels intentional rather than jarring.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Smooth Theme Transitions</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="cm">/* Smooth theme transition */</span>
+<span class="tag">html, body, header, main, aside, section, div,
+table, thead, tbody, tr, th, td, button, input,
+select, nav, p, span, h1, h2, h3, label</span> {
+  <span class="attr">transition</span>: <span class="val">background-color 0.3s ease</span>,
+              <span class="val">color 0.3s ease</span>,
+              <span class="val">border-color 0.3s ease</span>,
+              <span class="val">box-shadow 0.3s ease</span>;
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">When dark mode toggles, instead of all colors snapping instantly (jarring), they interpolate over 300ms with an <code>ease</code> curve (slow start → fast middle → slow end). Four properties are targeted — the exact set that changes between themes.</p>
+
+<div class="callout callout-tip mb-4">
+<strong>Why not <code>* { transition: all 0.3s; }</code>?</strong> Animating <em>all</em> properties on <em>every</em> element is computationally expensive — the browser checks and potentially interpolates every animatable property on every DOM node. It can also cause unwanted effects like animated padding, margins, or transforms during layout changes.
+</div>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Custom Scrollbars</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">::-webkit-scrollbar</span> { <span class="attr">width</span>: <span class="num">6px</span>; <span class="attr">height</span>: <span class="num">6px</span>; }
+<span class="tag">::-webkit-scrollbar-track</span> { <span class="attr">background</span>: <span class="val">transparent</span>; }
+<span class="tag">::-webkit-scrollbar-thumb</span> { <span class="attr">background</span>: <span class="val">#94a3b8</span>; <span class="attr">border-radius</span>: <span class="num">99px</span>; }
+<span class="tag">.dark ::-webkit-scrollbar-thumb</span> { <span class="attr">background</span>: <span class="val">#475569</span>; }</pre>
+
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Replaces the default OS scrollbar with a slim 6px pill-shaped track using Tailwind's Slate palette. The <code>::-webkit-scrollbar</code> pseudo-elements are non-standard — Firefox uses <code>scrollbar-width: thin</code> and <code>scrollbar-color</code> instead. In non-WebKit browsers, the system scrollbar displays as graceful degradation.</p>
+`,
+links:[
+{label:'CSS Transitions — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_transitions/Using_CSS_transitions'},
+{label:'Scrollbar Styling — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/::-webkit-scrollbar'},
+{label:'scrollbar-color (Firefox) — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/scrollbar-color'},
+{label:'CSS Easing Functions — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'css-glass-anim',num:'07',title:'Glassmorphism, Animations & Visual Effects',lines:'56–90',
+accent:'blue',
+tags:['Glassmorphism','backdrop-filter','CSS Animations','cubic-bezier','Gradient'],
+summary:'Frosted-glass header, popup entrance animations with custom cubic-bezier curves, gradient row highlights, and search focus glow rings. These effects create depth, motion, and spatial hierarchy.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Header Glass Effect</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">.header-glass</span> {
+  <span class="attr">background</span>: <span class="fn">rgba</span>(<span class="num">255,255,255,0.85</span>);
+  <span class="attr">backdrop-filter</span>: <span class="fn">blur</span>(<span class="num">16px</span>) <span class="fn">saturate</span>(<span class="num">180%</span>);
+  <span class="attr">-webkit-backdrop-filter</span>: <span class="fn">blur</span>(<span class="num">16px</span>) <span class="fn">saturate</span>(<span class="num">180%</span>);
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Creates an Apple-inspired "vibrancy" effect. As the user scrolls, content slides behind the 85%-opaque header, appearing blurred at 16px. The <strong><code>saturate(180%)</code></strong> is the secret ingredient — it boosts color vibrancy behind the glass, preventing the washed-out look that plain blur creates. This technique was popularized by macOS Big Sur and iOS 14.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Popup Entrance Animation</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">@keyframes popupSlideIn</span> {
+  <span class="kw">from</span> { <span class="attr">opacity</span>: <span class="num">0</span>; <span class="attr">transform</span>: <span class="fn">translateY</span>(<span class="num">16px</span>) <span class="fn">scale</span>(<span class="num">0.97</span>); }
+  <span class="kw">to</span>   { <span class="attr">opacity</span>: <span class="num">1</span>; <span class="attr">transform</span>: <span class="fn">translateY</span>(<span class="num">0</span>) <span class="fn">scale</span>(<span class="num">1</span>); }
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>cubic-bezier(0.16, 1, 0.3, 1)</code> timing function is an "ease-out-expo" curve — fast start, very smooth deceleration. Combined with simultaneous opacity + translate + scale, this creates a "material reveal" pattern. The popup fades in while sliding up 16px and growing from 97% to 100%, mimicking a physical object settling into place.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Row Highlight Gradient</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Active table rows use a horizontal gradient from light blue (<code>#eff6ff</code>, Tailwind blue-50) to near-white, creating directional lighting. The <code>!important</code> flag overrides Tailwind's <code>hover:bg-*</code> utilities at the same specificity level.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Search Focus Glow</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">.search-glow:focus-within</span> {
+  <span class="attr">box-shadow</span>: <span class="num">0 0 0 3px</span> <span class="fn">rgba</span>(<span class="num">59,130,246,0.2</span>);
+}</pre>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>:focus-within</code> pseudo-class activates when <em>any child</em> receives focus. The glow encompasses the entire search bar (input + buttons + divider) rather than just the input field — better UX for compound elements.</p>
+`,
+links:[
+{label:'backdrop-filter — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter'},
+{label:'CSS Animations — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_animations/Using_CSS_animations'},
+{label:'cubic-bezier.com (visual editor)',url:'https://cubic-bezier.com/'},
+{label:':focus-within — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-within'},
+{label:'Glassmorphism — CSS-Tricks',url:'https://css-tricks.com/almanac/properties/b/backdrop-filter/'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'css-components',num:'08',title:'Component Styles — Buttons, Badges, Inputs & Cards',lines:'92–124',
+accent:'pink',
+tags:['Buttons','Badge','Filter Input','Gradients','Microinteractions'],
+summary:'Reusable CSS component classes for filter pill inputs, primary/secondary buttons with hover lift effects, color-coded badges, and interactive column headers. Defined as CSS classes rather than Tailwind utilities for DRY reusability across 15+ elements.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Why CSS Classes Over Tailwind Utilities?</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">While Tailwind can express all these styles as utility classes, the class string for a filter input would be ~20 utilities long and repeated across ~15 elements. A single CSS class (<code>.filter-input</code>) is more maintainable and follows the DRY principle. Tailwind explicitly supports this pattern — "extract component classes when you find yourself repeating the same combinations."</p>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">Primary Button — The "Floating" Hover Effect</h4>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">.btn-primary</span> {
+  <span class="attr">background</span>: <span class="fn">linear-gradient</span>(<span class="num">135deg</span>, <span class="val">#3b82f6</span> <span class="num">0%</span>, <span class="val">#2563eb</span> <span class="num">100%</span>);
+  <span class="attr">box-shadow</span>: <span class="num">0 2px 8px</span> <span class="fn">rgba</span>(<span class="num">59,130,246,0.25</span>);
+}
+<span class="tag">.btn-primary:hover</span> {
+  <span class="attr">transform</span>: <span class="fn">translateY</span>(<span class="num">-1px</span>);
+  <span class="attr">box-shadow</span>: <span class="num">0 4px 16px</span> <span class="fn">rgba</span>(<span class="num">59,130,246,0.35</span>);
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">On hover, two simultaneous microinteractions: the button lifts 1px (<code>translateY(-1px)</code>) and its shadow deepens and spreads (8px→16px, 25%→35% opacity). The button appears to physically rise from the surface, creating a tactile, material feel.</p>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">Badge Component</h4>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>.badge</code> class uses <code>border-radius: 99px</code> for a perfect pill shape regardless of content width. The 11px font size with <code>letter-spacing: 0.02em</code> improves small-text readability. Each document type gets a unique color from the <code>TYPE_COLORS</code> JavaScript map.</p>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">Sortable Column Headers</h4>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code>cursor: pointer</code> signals clickability. <code>user-select: none</code> prevents accidental text selection during rapid sorting clicks. A 6% opacity blue tint on hover provides minimal but sufficient interaction feedback.</p>
+`,
+links:[
+{label:'Extracting Component Classes — Tailwind Docs',url:'https://tailwindcss.com/docs/reusing-styles'},
+{label:'CSS Gradients — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/gradient/linear-gradient'},
+{label:'transform: translateY — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/translateY'},
+{label:'user-select — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/user-select'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'css-mobile-panel',num:'09',title:'Mobile Accordion Panel (CSS)',lines:'126–163',
+accent:'orange',
+tags:['Accordion','max-height','Animation','Mobile','Pulse Ring'],
+summary:'CSS-driven accordion animation using the max-height transition trick, plus a one-shot pulse ring animation for active rows on mobile. Overcomes the limitation that CSS cannot transition <code class="text-xs">height: auto</code>.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">The max-height Accordion Trick</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">.inline-detail-outer</span> {
+  <span class="attr">overflow</span>: <span class="val">hidden</span>;
+  <span class="attr">max-height</span>: <span class="num">0</span>;
+  <span class="attr">transition</span>: <span class="val">max-height 0.45s cubic-bezier(0.16, 1, 0.3, 1)</span>;
+}
+<span class="tag">.inline-detail-outer.open</span> { <span class="attr">max-height</span>: <span class="num">900px</span>; }</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">CSS <strong>cannot</strong> animate from <code>height: 0</code> to <code>height: auto</code> — <code>auto</code> is a keyword, not a numeric value, so the browser cannot compute intermediate frames. The workaround: transition <code>max-height</code> from <code>0</code> to a value larger than the content will ever need (<code>900px</code>). The content stops at its natural height; the remaining transition time (natural height → 900px) runs invisibly past the visible boundary.</p>
+
+<div class="callout callout-tip mb-4">
+<strong>Modern alternative:</strong> The <code>interpolate-size: allow-keywords</code> CSS property (Chrome 129+) allows native <code>height: auto</code> transitions. However, browser support is still limited, making the max-height trick the safe choice for broad compatibility.
+</div>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Pulse Ring Animation</h3>
+<pre class="code-block mb-4" data-label="CSS"><span class="tag">@keyframes pulseRing</span> {
+  <span class="num">0%</span>   { <span class="attr">box-shadow</span>: <span class="num">0 0 0 0</span> <span class="fn">rgba</span>(<span class="num">59,130,246,0.3</span>); }
+  <span class="num">70%</span>  { <span class="attr">box-shadow</span>: <span class="num">0 0 0 6px</span> <span class="fn">rgba</span>(<span class="num">59,130,246,0</span>); }
+  <span class="num">100%</span> { <span class="attr">box-shadow</span>: <span class="num">0 0 0 0</span> <span class="fn">rgba</span>(<span class="num">59,130,246,0</span>); }
+}</pre>
+
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">A one-shot expanding blue ring that fades to transparent over 1 second. Applied to the active mobile row, it draws the user's eye to the row that has just expanded its details — a common pattern from iOS and Android native UI design.</p>
+`,
+links:[
+{label:'CSS Transitions with auto — CSS-Tricks',url:'https://css-tricks.com/using-css-transitions-auto-dimensions/'},
+{label:'CSS @keyframes — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/@keyframes'},
+{label:'interpolate-size (new) — Chrome',url:'https://developer.chrome.com/docs/css-ui/animate-to-height-auto'},
+{label:'box-shadow — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'header-body',num:'10',title:'Body Element & Sticky Glass Header',lines:'167–208',
+accent:'indigo',
+tags:['Sticky','Glass Effect','Flexbox','Responsive Nav','ARIA'],
+summary:'The body sets the base color palette using Tailwind\'s Slate tokens. The sticky header with frosted-glass effect stays fixed during scroll, containing brand identity, a compound search bar, theme toggle, and responsive navigation (desktop horizontal / mobile hamburger).',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Body Base Styles</h3>
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;body</span> <span class="attr">class</span>=<span class="val">"bg-slate-50 text-slate-900 dark:bg-slate-950
+      dark:text-slate-100 font-body"</span><span class="tag">&gt;</span></pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The Slate color palette has a cool blue undertone that feels more modern than neutral gray. Not pure white in light mode (<code>slate-50</code>) to reduce eye strain; not pure black in dark mode (<code>slate-950</code>) to avoid the harsh LCD "black glow" effect.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Sticky Header with Glass Effect</h3>
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;header</span> <span class="attr">class</span>=<span class="val">"sticky top-0 z-50 header-glass border-b
+        border-slate-200 dark:border-slate-800"</span><span class="tag">&gt;</span></pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code>sticky top-0</code> keeps the header at the viewport top during scroll — it participates in normal document flow until scrolled past, then becomes fixed. <code>z-50</code> ensures it stacks above all content. The <code>header-glass</code> class applies the frosted-glass effect from the custom CSS.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Compound Search Bar</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The search bar is a composite element: a magnifying glass icon, text input (<code>flex-1 bg-transparent</code> to fill space and merge into the container), a 1px vertical divider, and two action buttons (map search, advanced search). The parent container's border serves as the input's visual boundary.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Responsive Navigation Pattern</h3>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code>desktopMenu</code> uses <code>hidden md:flex</code> (hidden below 768px, flex above). <code>mobileMenuBtn</code> uses <code>md:hidden</code> (visible below, hidden above). The <code>aria-label="Open menu"</code> on the hamburger button is critical — without it, screen readers would announce an unlabeled button.</p>
+`,
+links:[
+{label:'position: sticky — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/position#sticky'},
+{label:'z-index — Tailwind Docs',url:'https://tailwindcss.com/docs/z-index'},
+{label:'Flexbox — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_flexible_box_layout'},
+{label:'ARIA Labels — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Attributes/aria-label'},
+{label:'Responsive Design — Tailwind',url:'https://tailwindcss.com/docs/responsive-design'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'grid-layout',num:'11',title:'CSS Grid Layout & Split-Pane System',lines:'210–314',
+accent:'cyan',
+tags:['CSS Grid','12-Column','Responsive','Split-Pane','Semantic HTML'],
+summary:'A 12-column CSS Grid layout that starts full-width and dynamically splits to 7:5 when the detail panel opens. JavaScript toggles Tailwind column-span classes to create a smooth split-pane experience without a traditional splitter.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">The 12-Column Grid</h3>
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;div</span> <span class="attr">class</span>=<span class="val">"grid grid-cols-1 lg:grid-cols-12 gap-4"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;section</span> <span class="attr">id</span>=<span class="val">"leftPane"</span> <span class="attr">class</span>=<span class="val">"lg:col-span-12"</span><span class="tag">&gt;</span>...<span class="tag">&lt;/section&gt;</span>
+  <span class="tag">&lt;aside</span> <span class="attr">id</span>=<span class="val">"rightPane"</span> <span class="attr">class</span>=<span class="val">"hidden lg:col-span-5"</span><span class="tag">&gt;</span>...<span class="tag">&lt;/aside&gt;</span>
+<span class="tag">&lt;/div&gt;</span></pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong>Default state:</strong> Left pane spans 12/12 columns (full width). Right pane is <code>hidden</code>.<br/><strong>Detail open:</strong> JS changes left to <code>lg:col-span-7</code>, shows right pane at <code>lg:col-span-5</code> → 58%:42% split.<br/><strong>Mobile:</strong> <code>grid-cols-1</code> collapses to single column; right pane stays hidden (inline accordion is used instead).</p>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>&lt;aside&gt;</code> element is semantically correct — it contains supplementary content (document details) that's related to but separate from the primary content (document list).</p>
+
+<h4 class="font-semibold mb-2 mt-6 dark:text-warmgray-100">Responsive Container Pattern</h4>
+<pre class="code-block mb-4" data-label="HTML"><span class="tag">&lt;main</span> <span class="attr">class</span>=<span class="val">"mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6"</span><span class="tag">&gt;</span></pre>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code>mx-auto</code> centers horizontally. <code>max-w-7xl</code> caps at 1280px (prevents content stretching on 4K monitors). Progressive padding: 16px → 24px → 32px. This is Tailwind's standard responsive container pattern.</p>
+`,
+links:[
+{label:'CSS Grid Layout — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout'},
+{label:'Grid Template Columns — Tailwind',url:'https://tailwindcss.com/docs/grid-template-columns'},
+{label:'Max Width — Tailwind',url:'https://tailwindcss.com/docs/max-width'},
+{label:'Semantic HTML — MDN',url:'https://developer.mozilla.org/en-US/docs/Glossary/Semantics#semantics_in_html'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'table-filters',num:'12',title:'Data Table, Filter Bar & Column Sorting',lines:'242–275, 395–407',
+accent:'teal',
+tags:['Table','Semantic HTML','Filters','Sorting','Real-Time','Accessibility'],
+summary:'A semantic HTML table with six sortable columns, a multi-field filter bar with real-time results, and ISO 8601 date strings that sort both lexicographically and chronologically. Accessible to screen readers through proper table markup.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Why Semantic Tables Over Div Grids?</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The table uses <code>&lt;table&gt;</code>, <code>&lt;thead&gt;</code>, <code>&lt;tbody&gt;</code>, <code>&lt;th&gt;</code> — not styled divs. This matters because: (1) screen readers announce row/column headers to visually impaired users, (2) the browser's native table layout handles column width distribution, (3) semantic structure is preserved if CSS fails.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Filter Bar Architecture</h3>
+<p class="mb-3 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Five filter inputs (Name, Owner, Type dropdown, Date From, Date To) plus a Clear button. All filters combine with AND logic. Empty filters are skipped via short-circuit evaluation:</p>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">return</span> documents.<span class="fn">filter</span>(d <span class="op">=&gt;</span> {
+  <span class="kw">if</span> (n <span class="op">&amp;&amp;</span> <span class="op">!</span>d.name.<span class="fn">toLowerCase</span>().<span class="fn">includes</span>(n)) <span class="kw">return false</span>;
+  <span class="kw">if</span> (o <span class="op">&amp;&amp;</span> <span class="op">!</span>d.owner.<span class="fn">toLowerCase</span>().<span class="fn">includes</span>(o)) <span class="kw">return false</span>;
+  <span class="kw">if</span> (t <span class="op">&amp;&amp;</span> d.type <span class="op">!==</span> t) <span class="kw">return false</span>;
+  <span class="kw">if</span> (df <span class="op">&amp;&amp;</span> d.date <span class="op">&lt;</span> df) <span class="kw">return false</span>;
+  <span class="kw">return true</span>;
+});</pre>
+
+<div class="callout callout-info mb-4">
+<strong>ISO 8601 date advantage:</strong> Date strings in <code>YYYY-MM-DD</code> format sort lexicographically <em>and</em> chronologically — <code>"2025-12-29" &lt; "2026-01-10"</code> is <code>true</code>. This means the same <code>&lt;</code> operator works for both string comparison (filters) and array sort (sorting), eliminating the need for <code>Date</code> object parsing.
+</div>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Sorting System</h3>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>[...docs]</code> spread operator creates a shallow copy before sorting — the original array is never mutated. <code>.toLowerCase()</code> is applied for name/owner/type to ensure case-insensitive ordering. Re-clicking the same column toggles direction; clicking a new column resets to ascending.</p>
+`,
+links:[
+{label:'HTML Tables — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table'},
+{label:'Array.prototype.filter() — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/filter'},
+{label:'Array.prototype.sort() — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort'},
+{label:'ISO 8601 Date Format',url:'https://en.wikipedia.org/wiki/ISO_8601'},
+{label:'Accessible Tables — W3C',url:'https://www.w3.org/WAI/tutorials/tables/'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'js-data-icons',num:'13',title:'JavaScript Data Layer, Icons & Header Renderer',lines:'375–388',
+accent:'yellow',
+tags:['Data Model','SVG Icons','Template Literals','Config-Driven','XSS'],
+summary:'The application state is a plain JavaScript array of document objects with ISO date strings and decimal coordinates. A lightweight SVG icon factory provides 7 icons without any icon library dependency. The header is rendered from a config object for easy modification.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Data Model</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">const</span> documents <span class="op">=</span> [
+  { <span class="attr">id</span>: <span class="str">"DOC-1001"</span>,
+    <span class="attr">name</span>: <span class="str">"Incident Report - Warehouse 7"</span>,
+    <span class="attr">date</span>: <span class="str">"2026-01-18"</span>,      <span class="cm">// ISO 8601 → lexicographic sort = chronological</span>
+    <span class="attr">lat</span>: <span class="num">32.3517</span>, <span class="attr">lng</span>: <span class="num">-86.2660</span>, <span class="cm">// Decimal degrees for haversine</span>
+    <span class="attr">favorite</span>: <span class="kw">true</span>             <span class="cm">// Mutable boolean, toggled in-place</span>
+  }, <span class="cm">// ... 3 more documents</span>
+];</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">In production, this array would be replaced by an API fetch. The structure allows the same filtering, sorting, and rendering code to work unchanged with API-sourced data.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">SVG Icon Factory</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Instead of loading an icon library (Font Awesome = ~100KB+), a simple function stores 7 SVG template strings. Common attributes are extracted into shared variables for DRY-ness. All icons use a 24×24 viewBox, 2px stroke, and <code>currentColor</code> to inherit parent text color via Tailwind classes. The <code>|| i.file</code> fallback prevents undefined returns for unknown names.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Config-Driven Header</h3>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>headerConfig</code> object separates data (brand name, menu items) from rendering logic. This makes it trivial to change the app name or add menu items. The <code>renderHeader()</code> function builds both desktop and mobile navigation from the same data source — same icons and labels, different layouts for each viewport.</p>
+`,
+links:[
+{label:'SVG on the Web — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial'},
+{label:'Template Literals — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals'},
+{label:'currentColor — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/color_value#currentcolor'},
+{label:'XSS Prevention — OWASP',url:'https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'theme-system',num:'14',title:'Dark/Light Theme System',lines:'390–393',
+accent:'amber',
+tags:['Dark Mode','localStorage','prefers-color-scheme','Media Query','Toggle'],
+summary:'A three-tier preference cascade: explicit user choice (localStorage) → OS preference (prefers-color-scheme media query) → light default. The toggle persists state across sessions and smoothly transitions all colors via the CSS transition layer.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Three-Tier Preference Cascade</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">function</span> <span class="fn">initTheme</span>() {
+  <span class="kw">const</span> s <span class="op">=</span> localStorage.<span class="fn">getItem</span>(<span class="str">'theme'</span>);
+  <span class="kw">if</span> (s <span class="op">===</span> <span class="str">'dark'</span> <span class="op">||</span>
+      (<span class="op">!</span>s <span class="op">&amp;&amp;</span> window.<span class="fn">matchMedia</span>(<span class="str">'(prefers-color-scheme: dark)'</span>).matches))
+    document.documentElement.classList.<span class="fn">add</span>(<span class="str">'dark'</span>);
+  <span class="fn">updateThemeIcons</span>();
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong>Priority 1:</strong> If <code>localStorage.theme</code> is <code>'dark'</code> or <code>'light'</code>, use that. <strong>Priority 2:</strong> If no stored preference, check the OS dark mode setting via <code>matchMedia</code>. <strong>Priority 3:</strong> If neither, light mode is the implicit default (no <code>dark</code> class added).</p>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Adding <code>dark</code> to <code>document.documentElement</code> (the <code>&lt;html&gt;</code> element) activates all Tailwind <code>dark:</code> variants throughout the page. The CSS transitions defined on Lines 38–40 smoothly interpolate every color change over 300ms.</p>
+
+<div class="callout callout-tip mb-4">
+<strong>Icon management:</strong> Both sun and moon SVGs are always in the DOM. <code>updateThemeIcons()</code> simply toggles the <code>hidden</code> class — sun shows in dark mode, moon shows in light mode. No icon is created or destroyed, making the toggle instant.
+</div>
+`,
+links:[
+{label:'localStorage — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage'},
+{label:'matchMedia — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia'},
+{label:'prefers-color-scheme — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme'},
+{label:'Dark Mode Best Practices — web.dev',url:'https://web.dev/articles/prefers-color-scheme'},
+{label:'classList API — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Element/classList'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'mobile-panel-js',num:'15',title:'Inline Mobile Detail Panel (JavaScript)',lines:'413–533',
+accent:'orange',
+tags:['Mobile','Accordion','DOM Injection','OpenLayers','requestAnimationFrame','Memory'],
+summary:'The most complex section. On mobile, clicking a table row injects a new <code class="text-xs">&lt;tr&gt;</code> with a full detail panel including a live OpenLayers map. Uses double requestAnimationFrame for reliable CSS transitions and careful cleanup to prevent memory leaks from orphaned map instances.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Architecture</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">On mobile, there's no room for a side panel. Instead, a detail panel is injected as a new <code>&lt;tr&gt;</code> immediately below the clicked row, creating an accordion expansion. Only one panel can be open at a time — opening a new one destroys the previous one.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">The Double requestAnimationFrame</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="fn">requestAnimationFrame</span>(() <span class="op">=&gt;</span> <span class="fn">requestAnimationFrame</span>(() <span class="op">=&gt;</span> {
+  <span class="kw">const</span> outer <span class="op">=</span> document.<span class="fn">getElementById</span>(<span class="str">'inlineOuter_'</span> <span class="op">+</span> doc.id);
+  <span class="kw">if</span> (outer) outer.classList.<span class="fn">add</span>(<span class="str">'open'</span>);
+}));</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">For the <code>max-height</code> transition to animate, the browser must: (1) paint the element with <code>max-height: 0</code>, then (2) change to <code>max-height: 900px</code> in a subsequent frame. A single <code>requestAnimationFrame</code> runs before the <em>next</em> repaint, but the initial state might not be painted yet. The double-rAF guarantees at least one paint cycle has completed before adding the <code>open</code> class.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Memory Leak Prevention</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">function</span> <span class="fn">destroyInlinePanel</span>() {
+  <span class="kw">if</span> (inlineMap) {
+    inlineMap.<span class="fn">setTarget</span>(<span class="kw">null</span>); <span class="cm">// Detach from DOM, stop tile loading</span>
+    inlineMap <span class="op">=</span> <span class="kw">null</span>;
+    inlineMarkerLayer <span class="op">=</span> <span class="kw">null</span>;
+  }
+  <span class="kw">if</span> (inlineDetailRow) inlineDetailRow.<span class="fn">remove</span>();
+  inlineDetailRow <span class="op">=</span> <span class="kw">null</span>;
+  inlineDocId <span class="op">=</span> <span class="kw">null</span>;
+}</pre>
+
+<div class="callout callout-warn mb-4">
+<strong>Critical:</strong> OpenLayers map instances retain event listeners, tile caches, and animation frames internally. Simply removing the DOM element leaves these alive as memory leaks. <code>setTarget(null)</code> properly disconnects the map from the DOM and releases resources.
+</div>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Closing Animation Timing</h3>
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code>closeMobileInline()</code> removes the <code>open</code> class first (triggering the CSS <code>max-height</code> collapse over 450ms), waits 420ms via <code>setTimeout</code>, then destroys the DOM element. This ensures the accordion collapses smoothly before removal. Destroying immediately would cause a jarring jump.</p>
+`,
+links:[
+{label:'requestAnimationFrame — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/window/requestAnimationFrame'},
+{label:'insertAdjacentElement — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentElement'},
+{label:'Memory Leaks in JS — web.dev',url:'https://web.dev/articles/monitor-total-page-memory-usage'},
+{label:'OpenLayers Map.setTarget()',url:'https://openlayers.org/en/latest/apidoc/module-ol_Map-Map.html#setTarget'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'table-renderer',num:'16',title:'Table Renderer & Event Delegation',lines:'535–583',
+accent:'lime',
+tags:['DOM Rendering','Event Delegation','Blob API','Date Formatting','Timezone'],
+summary:'Renders the document table from filtered/sorted data, uses event delegation (one listener per container vs. N per row) for action buttons, fixes the timezone-shift date bug, and implements a fake download via the Blob API.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">The Timezone Date Fix</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">function</span> <span class="fn">formatDate</span>(iso) {
+  <span class="kw">return new</span> <span class="fn">Date</span>(iso <span class="op">+</span> <span class="str">"T00:00:00"</span>).<span class="fn">toLocaleDateString</span>(
+    <span class="kw">undefined</span>, { <span class="attr">year</span>:<span class="str">"numeric"</span>, <span class="attr">month</span>:<span class="str">"short"</span>, <span class="attr">day</span>:<span class="str">"2-digit"</span> }
+  );
+}</pre>
+
+<div class="callout callout-warn mb-4">
+<strong>The off-by-one-day bug:</strong> <code>new Date("2026-01-18")</code> is parsed as UTC midnight. In US Central time (UTC-6), this displays as January <em>17th</em>. Appending <code>T00:00:00</code> forces interpretation as local midnight, fixing the timezone shift.
+</div>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Event Delegation Pattern</h3>
+<pre class="code-block mb-4" data-label="JavaScript">tbody.<span class="fn">addEventListener</span>(<span class="str">"click"</span>, e <span class="op">=&gt;</span> {
+  <span class="kw">const</span> b <span class="op">=</span> e.target.<span class="fn">closest</span>(<span class="str">"button"</span>);
+  <span class="kw">if</span> (<span class="op">!</span>b) <span class="kw">return</span>;
+  <span class="kw">const</span> action <span class="op">=</span> b.<span class="fn">getAttribute</span>(<span class="str">"data-action"</span>);
+  <span class="kw">const</span> id <span class="op">=</span> b.<span class="fn">getAttribute</span>(<span class="str">"data-id"</span>);
+  <span class="cm">// Route to handler based on action...</span>
+  e.<span class="fn">stopPropagation</span>(); <span class="cm">// Prevent row click from firing</span>
+});</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><strong>One listener</strong> on the <code>&lt;tbody&gt;</code> handles all button clicks in all rows via event bubbling. <code>e.target.closest("button")</code> traverses up from the click target to find the nearest button ancestor. <code>data-action</code> and <code>data-id</code> attributes determine the handler. This is more memory-efficient than individual listeners and automatically works for dynamically added rows.</p>
+
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed"><code>e.stopPropagation()</code> prevents the click from bubbling to the <code>&lt;tr&gt;</code> handler (which opens details). Without this, clicking star/download would both perform the action <em>and</em> open the detail panel.</p>
+`,
+links:[
+{label:'Event Delegation — MDN',url:'https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Building_blocks/Event_bubbling'},
+{label:'Element.closest() — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Element/closest'},
+{label:'Blob API — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Blob'},
+{label:'toLocaleDateString — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toLocaleDateString'},
+{label:'URL.createObjectURL — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL_static'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'map-integration',num:'17',title:'OpenLayers Map Integration',lines:'591–600',
+accent:'emerald',
+tags:['OpenLayers','Tile Layer','Vector Layer','Marker','Projection','EPSG'],
+summary:'Three separate OpenLayers map instances with consistent architecture: OSM tile base layer + vector overlay for markers. Uses coordinate projection conversion between WGS 84 (lat/lng) and Web Mercator (map internal), animated view transitions, and styled circle markers.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Map Architecture</h3>
+<pre class="code-block mb-4" data-label="JavaScript">detailMap <span class="op">=</span> <span class="kw">new</span> ol.Map({
+  <span class="attr">target</span>: <span class="str">"map"</span>,
+  <span class="attr">layers</span>: [
+    <span class="kw">new</span> ol.layer.<span class="fn">Tile</span>({ <span class="attr">source</span>: <span class="kw">new</span> ol.source.<span class="fn">OSM</span>() }),
+    detailMarkerLayer  <span class="cm">// Vector layer for programmatic drawing</span>
+  ],
+  <span class="attr">view</span>: <span class="kw">new</span> ol.<span class="fn">View</span>({
+    <span class="attr">center</span>: ol.proj.<span class="fn">fromLonLat</span>([<span class="num">-86.2660</span>, <span class="num">32.3517</span>]),
+    <span class="attr">zoom</span>: <span class="num">10</span>
+  })
+});</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Each map has two layers: (1) a <strong>Tile layer</strong> loading OpenStreetMap raster tiles — free, no API key, community-maintained; (2) a <strong>Vector layer</strong> for programmatic drawing of markers and shapes. The <code>ol.proj.fromLonLat()</code> function converts longitude/latitude (EPSG:4326) to Web Mercator (EPSG:3857) — the projection used by all web maps.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Marker Styling</h3>
+<pre class="code-block mb-4" data-label="JavaScript">f.<span class="fn">setStyle</span>(<span class="kw">new</span> ol.style.<span class="fn">Style</span>({
+  <span class="attr">image</span>: <span class="kw">new</span> ol.style.<span class="fn">Circle</span>({
+    <span class="attr">radius</span>: <span class="num">8</span>,
+    <span class="attr">fill</span>: <span class="kw">new</span> ol.style.<span class="fn">Fill</span>({ <span class="attr">color</span>: <span class="str">"#3b82f6"</span> }),
+    <span class="attr">stroke</span>: <span class="kw">new</span> ol.style.<span class="fn">Stroke</span>({ <span class="attr">color</span>: <span class="str">"#fff"</span>, <span class="attr">width</span>: <span class="num">2.5</span> })
+  })
+}));</pre>
+
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">An 8px blue circle with a 2.5px white border — resembling a standard map pin without requiring an external image. The search map uses an SVG pin icon via <code>ol.style.Icon</code> with an inline data URI, demonstrating both marker styles.</p>
+`,
+links:[
+{label:'ol.Map — API',url:'https://openlayers.org/en/latest/apidoc/module-ol_Map-Map.html'},
+{label:'ol.View — API',url:'https://openlayers.org/en/latest/apidoc/module-ol_View-View.html'},
+{label:'ol.source.OSM — API',url:'https://openlayers.org/en/latest/apidoc/module-ol_source_OSM-OSM.html'},
+{label:'ol.proj.fromLonLat — API',url:'https://openlayers.org/en/latest/apidoc/module-ol_proj.html#.fromLonLat'},
+{label:'Vector Layer Styling — API',url:'https://openlayers.org/en/latest/apidoc/module-ol_style_Style-Style.html'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'haversine',num:'18',title:'Geospatial Search & Haversine Formula',lines:'656–678',
+accent:'green',
+tags:['Haversine','Geospatial','Great Circle','Trigonometry','Radius Search'],
+summary:'Client-side geographic distance calculation using the haversine formula for great-circle distance on a sphere. Filters documents within a user-defined mile radius from a map-clicked point, with a visual radius circle drawn as a 64-sided polygon.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">The Haversine Formula</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">function</span> <span class="fn">haversine</span>(lat1, lng1, lat2, lng2) {
+  <span class="kw">const</span> R <span class="op">=</span> <span class="num">3958.8</span>;  <span class="cm">// Earth's radius in miles</span>
+  <span class="kw">const</span> dLat <span class="op">=</span> (lat2 <span class="op">-</span> lat1) <span class="op">*</span> Math.PI <span class="op">/</span> <span class="num">180</span>;
+  <span class="kw">const</span> dLng <span class="op">=</span> (lng2 <span class="op">-</span> lng1) <span class="op">*</span> Math.PI <span class="op">/</span> <span class="num">180</span>;
+  <span class="kw">const</span> a <span class="op">=</span> Math.<span class="fn">sin</span>(dLat<span class="op">/</span><span class="num">2</span>)<span class="op">**</span><span class="num">2</span> <span class="op">+</span>
+    Math.<span class="fn">cos</span>(lat1 <span class="op">*</span> Math.PI<span class="op">/</span><span class="num">180</span>) <span class="op">*</span> Math.<span class="fn">cos</span>(lat2 <span class="op">*</span> Math.PI<span class="op">/</span><span class="num">180</span>) <span class="op">*</span>
+    Math.<span class="fn">sin</span>(dLng<span class="op">/</span><span class="num">2</span>)<span class="op">**</span><span class="num">2</span>;
+  <span class="kw">return</span> R <span class="op">*</span> <span class="num">2</span> <span class="op">*</span> Math.<span class="fn">atan2</span>(Math.<span class="fn">sqrt</span>(a), Math.<span class="fn">sqrt</span>(<span class="num">1</span><span class="op">-</span>a));
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The haversine formula calculates the <strong>great-circle distance</strong> between two points on a sphere, accounting for Earth's curvature. Unlike Euclidean distance (which would give incorrect results over large distances), haversine uses spherical trigonometry to compute the arc length.</p>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The algorithm: (1) convert degree differences to radians, (2) compute the central angle using the haversine of the angular differences, (3) multiply by Earth's radius (3,958.8 miles). The result is the "as the crow flies" distance in miles.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Radius Circle Visualization</h3>
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The visual radius is drawn as a <strong>64-sided polygon</strong> approximation of a circle. OpenLayers can't render <code>Circle</code> geometries directly in vector layers — they must be converted to <code>Polygon</code> via <code>ol.geom.Polygon.fromCircle(circ, 64)</code>. 64 sides are visually indistinguishable from a true circle at any reasonable zoom. The polygon is styled with a 10% opacity fill and a dashed 2px stroke in emerald green.</p>
+
+<div class="callout callout-info mb-4">
+<strong>Accuracy note:</strong> The haversine formula assumes a perfect sphere. Earth is actually an oblate spheroid, so errors of up to ~0.3% can occur. For this application's use case (filtering within ~50 miles), the error is negligible. More precise alternatives include the Vincenty formula or using a server-side PostGIS database.
+</div>
+`,
+links:[
+{label:'Haversine Formula — Wikipedia',url:'https://en.wikipedia.org/wiki/Haversine_formula'},
+{label:'Great-Circle Distance — Wikipedia',url:'https://en.wikipedia.org/wiki/Great-circle_distance'},
+{label:'ol.geom.Polygon.fromCircle — API',url:'https://openlayers.org/en/latest/apidoc/module-ol_geom_Polygon.html#.fromCircle'},
+{label:'Vincenty Formula — Wikipedia',url:'https://en.wikipedia.org/wiki/Vincenty%27s_formulae'},
+{label:'Math.atan2 — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/atan2'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'responsive-routing',num:'19',title:'Responsive Routing & Window Resize',lines:'602–654',
+accent:'purple',
+tags:['Responsive','Breakpoint','Resize Handler','State Transfer','Mobile/Desktop'],
+summary:'The application adapts <em>behavior</em>, not just layout, between mobile and desktop. A resize handler detects breakpoint crossings and seamlessly transfers the selected document from inline accordion (mobile) to side panel (desktop) or vice versa, preserving user state.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Behavioral Routing (Not Just CSS)</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="kw">function</span> <span class="fn">openDetails</span>(id) {
+  <span class="kw">const</span> doc <span class="op">=</span> documents.<span class="fn">find</span>(d <span class="op">=&gt;</span> d.id <span class="op">===</span> id);
+  <span class="kw">if</span> (<span class="fn">isMobile</span>()) {
+    <span class="cm">// Toggle accordion inline panel</span>
+    <span class="fn">createInlinePanel</span>(doc, targetRow);
+  } <span class="kw">else</span> {
+    <span class="cm">// Open desktop side panel</span>
+    <span class="fn">showRightPane</span>();
+    <span class="fn">renderDetails</span>(doc);
+  }
+}</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">This is more than responsive CSS. The same user action (clicking a row) triggers <strong>completely different code paths</strong> depending on screen width. Mobile creates an inline DOM element; desktop shows a persistent side panel. The <code>isMobile()</code> helper checks against the 1024px breakpoint, matching Tailwind's <code>lg:</code> prefix.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Cross-Breakpoint State Transfer</h3>
+<pre class="code-block mb-4" data-label="JavaScript">window.<span class="fn">addEventListener</span>(<span class="str">'resize'</span>, () <span class="op">=&gt;</span> {
+  <span class="kw">const</span> now <span class="op">=</span> <span class="fn">isMobile</span>();
+  <span class="kw">if</span> (lastWasMobile <span class="op">!==</span> now <span class="op">&amp;&amp;</span> currentDocId) {
+    <span class="cm">// Seamlessly transfer view mode</span>
+    <span class="kw">if</span> (now) { <span class="fn">hideRightPane</span>(); <span class="fn">openDetails</span>(doc.id); }
+    <span class="kw">else</span> { <span class="fn">destroyInlinePanel</span>(); <span class="fn">showRightPane</span>(); }
+  }
+  lastWasMobile <span class="op">=</span> now;
+});</pre>
+
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The <code>lastWasMobile</code> flag prevents the logic from running on every resize pixel — it only fires when the 1024px boundary is actually crossed. If a document is selected, its detail view is seamlessly transferred to the new presentation mode. The user never loses their selection.</p>
+`,
+links:[
+{label:'Window resize event — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Window/resize_event'},
+{label:'Responsive Design — MDN',url:'https://developer.mozilla.org/en-US/docs/Learn/CSS/CSS_layout/Responsive_Design'},
+{label:'scrollIntoView — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView'}
+]
+},
+// ──────────────────────────────────────────
+{
+id:'keyboard-init',num:'20',title:'Keyboard Shortcuts, Mobile Menu & Initialization',lines:'698–716',
+accent:'red',
+tags:['Keyboard','Escape','Ctrl+K','Initialization','Bootstrap','Event Lifecycle'],
+summary:'Escape closes popups in priority order. Ctrl+K/Cmd+K focuses search (matching VS Code, Slack, and Spotlight conventions). The initialization sequence follows a precise order to prevent flash-of-wrong-theme and ensure DOM dependencies are met.',
+detail:`
+<h3 class="font-display text-lg font-semibold mb-3 dark:text-warmgray-50">Keyboard Shortcuts</h3>
+<pre class="code-block mb-4" data-label="JavaScript">document.<span class="fn">addEventListener</span>(<span class="str">'keydown'</span>, e <span class="op">=&gt;</span> {
+  <span class="kw">if</span> (e.key <span class="op">===</span> <span class="str">'Escape'</span>) {
+    <span class="cm">// Priority: popup → inline panel</span>
+    <span class="kw">if</span> (<span class="op">!</span>mapSearchPopup.classList.<span class="fn">contains</span>(<span class="str">'hidden'</span>)) <span class="fn">closeMapSearch</span>();
+    <span class="kw">else if</span> (<span class="op">!</span>advSearchPopup.classList.<span class="fn">contains</span>(<span class="str">'hidden'</span>)) <span class="fn">closeAdvSearch</span>();
+    <span class="kw">else if</span> (inlineDocId) <span class="fn">closeMobileInline</span>();
+  }
+  <span class="kw">if</span> ((e.ctrlKey <span class="op">||</span> e.metaKey) <span class="op">&amp;&amp;</span> e.key <span class="op">===</span> <span class="str">'k'</span>) {
+    e.<span class="fn">preventDefault</span>(); <span class="cm">// Block browser default (address bar)</span>
+    document.<span class="fn">getElementById</span>(<span class="str">'headerSearchInput'</span>).<span class="fn">focus</span>();
+  }
+});</pre>
+
+<p class="mb-4 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">Escape uses a <strong>priority stack</strong> — the topmost overlay closes first. <code>Ctrl+K</code> (or <code>Cmd+K</code> on Mac via <code>e.metaKey</code>) is a widely recognized search focus shortcut used by VS Code, Slack, Notion, and macOS Spotlight. <code>e.preventDefault()</code> blocks the browser's default behavior for this key combo.</p>
+
+<h3 class="font-display text-lg font-semibold mb-3 mt-6 dark:text-warmgray-50">Initialization Sequence</h3>
+<pre class="code-block mb-4" data-label="JavaScript"><span class="fn">initTheme</span>();           <span class="cm">// 1. Prevent flash of wrong theme</span>
+<span class="fn">renderHeader</span>(cfg);     <span class="cm">// 2. Populate brand + nav</span>
+<span class="fn">populateTypeFilter</span>(); <span class="cm">// 3. Build dropdown from data</span>
+<span class="fn">applyFiltersAndRender</span>(); <span class="cm">// 4. Render table (no filters)</span>
+<span class="fn">updateSortUI</span>();        <span class="cm">// 5. Set sort icons to default</span>
+<span class="fn">setupMobileMenu</span>();     <span class="cm">// 6. Attach hamburger toggle</span>
+<span class="fn">initDetailMap</span>();       <span class="cm">// 7. Pre-initialize map (avoids delay on first open)</span></pre>
+
+<p class="mb-2 text-warmgray-700 dark:text-warmgray-300 leading-relaxed">The order is intentional: theme is applied first to prevent a visible flash. The header and filters are populated before the table renders (it depends on them). The map is initialized even while its panel is hidden to avoid a rendering delay when first opened — OpenLayers needs a painted container to calculate tile positions.</p>
+`,
+links:[
+{label:'KeyboardEvent — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent'},
+{label:'preventDefault() — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault'},
+{label:'DOMContentLoaded vs script placement',url:'https://developer.mozilla.org/en-US/docs/Web/API/Document/DOMContentLoaded_event'},
+{label:'Focus management — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus'}
+]
+}
+];
+
+/* ===== ACCENT COLOR MAP ===== */
+const ACCENTS={
+amber:'border-amber-400 dark:border-amber-600',
+slate:'border-slate-400 dark:border-slate-500',
+sky:'border-sky-400 dark:border-sky-500',
+rose:'border-rose-400 dark:border-rose-500',
+emerald:'border-emerald-400 dark:border-emerald-500',
+violet:'border-violet-400 dark:border-violet-500',
+blue:'border-blue-400 dark:border-blue-500',
+pink:'border-pink-400 dark:border-pink-500',
+orange:'border-orange-400 dark:border-orange-500',
+indigo:'border-indigo-400 dark:border-indigo-500',
+cyan:'border-cyan-400 dark:border-cyan-500',
+teal:'border-teal-400 dark:border-teal-500',
+yellow:'border-yellow-400 dark:border-yellow-500',
+lime:'border-lime-500 dark:border-lime-400',
+green:'border-green-400 dark:border-green-500',
+purple:'border-purple-400 dark:border-purple-500',
+red:'border-red-400 dark:border-red-500'
+};
+
+const ACCENT_BG={
+amber:'bg-amber-50 dark:bg-amber-950/30',
+slate:'bg-slate-50 dark:bg-slate-900/30',
+sky:'bg-sky-50 dark:bg-sky-950/30',
+rose:'bg-rose-50 dark:bg-rose-950/30',
+emerald:'bg-emerald-50 dark:bg-emerald-950/30',
+violet:'bg-violet-50 dark:bg-violet-950/30',
+blue:'bg-blue-50 dark:bg-blue-950/30',
+pink:'bg-pink-50 dark:bg-pink-950/30',
+orange:'bg-orange-50 dark:bg-orange-950/30',
+indigo:'bg-indigo-50 dark:bg-indigo-950/30',
+cyan:'bg-cyan-50 dark:bg-cyan-950/30',
+teal:'bg-teal-50 dark:bg-teal-950/30',
+yellow:'bg-yellow-50 dark:bg-yellow-950/30',
+lime:'bg-lime-50 dark:bg-lime-950/30',
+green:'bg-green-50 dark:bg-green-950/30',
+purple:'bg-purple-50 dark:bg-purple-950/30',
+red:'bg-red-50 dark:bg-red-950/30'
+};
+
+const ACCENT_TEXT={
+amber:'text-amber-700 dark:text-amber-400',
+slate:'text-slate-700 dark:text-slate-300',
+sky:'text-sky-700 dark:text-sky-400',
+rose:'text-rose-700 dark:text-rose-400',
+emerald:'text-emerald-700 dark:text-emerald-400',
+violet:'text-violet-700 dark:text-violet-400',
+blue:'text-blue-700 dark:text-blue-400',
+pink:'text-pink-700 dark:text-pink-400',
+orange:'text-orange-700 dark:text-orange-400',
+indigo:'text-indigo-700 dark:text-indigo-400',
+cyan:'text-cyan-700 dark:text-cyan-400',
+teal:'text-teal-700 dark:text-teal-400',
+yellow:'text-yellow-700 dark:text-yellow-400',
+lime:'text-lime-700 dark:text-lime-400',
+green:'text-green-700 dark:text-green-400',
+purple:'text-purple-700 dark:text-purple-400',
+red:'text-red-700 dark:text-red-400'
+};
+
+/* ===== RENDER SECTION CARDS ===== */
+function renderSections(){
+const grid=document.getElementById('sectionsGrid');
+grid.innerHTML='';
+SECTIONS.forEach((s,i)=>{
+const card=document.createElement('div');
+card.id='section-'+s.id;
+card.className=`card-shine relative rounded-2xl border-l-4 ${ACCENTS[s.accent]} border border-warmgray-200 dark:border-warmgray-700 bg-white dark:bg-warmgray-800 p-6 cursor-pointer hover:shadow-lg transition-all stagger-in`;
+card.style.animationDelay=`${Math.min(i*60,600)}ms`;
+card.innerHTML=`
+<span class="sect-num">${s.num}</span>
+<div class="flex items-start justify-between gap-4">
+  <div class="min-w-0 flex-1">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="font-mono text-xs font-semibold ${ACCENT_TEXT[s.accent]}">${s.num}</span>
+      <span class="font-mono text-[10px] text-warmgray-400 dark:text-warmgray-500">Lines ${s.lines}</span>
+    </div>
+    <h3 class="font-display text-lg font-semibold mb-2 dark:text-warmgray-50">${s.title}</h3>
+    <p class="text-sm text-warmgray-600 dark:text-warmgray-400 leading-relaxed mb-3">${s.summary}</p>
+    <div class="flex flex-wrap gap-1.5">
+      ${s.tags.map(t=>`<span class="tag-pill ${ACCENT_BG[s.accent]} ${ACCENT_TEXT[s.accent]} text-[10px]">${t}</span>`).join('')}
+    </div>
+  </div>
+  <div class="flex-shrink-0 mt-1">
+    <div class="h-10 w-10 rounded-xl ${ACCENT_BG[s.accent]} flex items-center justify-center ${ACCENT_TEXT[s.accent]} transition-transform group-hover:scale-110">
+      <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+    </div>
+  </div>
+</div>
+<div class="mt-3 pt-3 border-t border-warmgray-100 dark:border-warmgray-700 flex items-center justify-between">
+  <span class="text-xs text-warmgray-400 dark:text-warmgray-500">${s.links.length} reference${s.links.length!==1?'s':''}</span>
+  <span class="text-xs font-semibold ${ACCENT_TEXT[s.accent]} flex items-center gap-1">Deep Dive <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+</div>`;
+card.addEventListener('click',()=>openModal(i));
+card.addEventListener('mousemove',e=>{const r=card.getBoundingClientRect();card.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');card.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');});
+grid.appendChild(card);
+});
+document.getElementById('sectionCountHero').textContent=SECTIONS.length+' deep dives';
+}
+
+/* ===== RENDER TOC ===== */
+function renderTOC(){
+const navs=[document.getElementById('tocNav'),document.getElementById('mobileTocNav')];
+navs.forEach(nav=>{
+if(!nav)return;
+nav.innerHTML='';
+SECTIONS.forEach((s,i)=>{
+const a=document.createElement('a');
+a.href='#section-'+s.id;
+a.className='toc-item block py-1.5 text-sm text-warmgray-600 dark:text-warmgray-400 hover:text-warmgray-900 dark:hover:text-warmgray-200 transition-colors cursor-pointer';
+a.dataset.index=i;
+a.innerHTML=`<span class="font-mono text-[10px] ${ACCENT_TEXT[s.accent]} mr-1.5">${s.num}</span>${s.title}`;
+a.addEventListener('click',e=>{
+  e.preventDefault();
+  document.getElementById('section-'+s.id)?.scrollIntoView({behavior:'smooth',block:'start'});
+  closeMobileToc();
+});
+nav.appendChild(a);
+});
+});
+}
+
+/* ===== MODAL ===== */
+let currentModalIndex=-1;
+const modal=document.getElementById('detailModal');
+const modalCard=document.getElementById('modalCard');
+
+function openModal(idx){
+currentModalIndex=idx;
+const s=SECTIONS[idx];
+document.getElementById('modalNum').textContent=s.num;
+document.getElementById('modalTitle').textContent=s.title;
+document.getElementById('modalLines').textContent='Lines '+s.lines;
+document.getElementById('modalTags').innerHTML=s.tags.map(t=>`<span class="tag-pill ${ACCENT_BG[s.accent]} ${ACCENT_TEXT[s.accent]} text-[10px]">${t}</span>`).join('');
+
+let bodyHTML=`<div class="prose-area text-warmgray-700 dark:text-warmgray-300 text-[15px] leading-relaxed">${s.detail}</div>`;
+if(s.links&&s.links.length>0){
+bodyHTML+=`<div class="mt-8 pt-6 border-t border-warmgray-200 dark:border-warmgray-700">
+<h4 class="font-display text-base font-semibold mb-4 dark:text-warmgray-50 flex items-center gap-2">
+<svg class="h-4 w-4 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+References &amp; Official Docs</h4>
+<div class="space-y-2">
+${s.links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener" class="ref-link"><svg class="h-4 w-4 flex-shrink-0 text-warmgray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><span class="text-sm font-medium text-warmgray-700 dark:text-warmgray-300">${l.label}</span><span class="ml-auto text-[10px] text-warmgray-400 dark:text-warmgray-500 font-mono truncate max-w-[200px] hidden sm:inline">${l.url.replace('https://','').split('/').slice(0,2).join('/')}</span></a>`).join('')}
+</div></div>`;
+}
+document.getElementById('modalBody').innerHTML=bodyHTML;
+document.getElementById('modalBody').scrollTop=0;
+
+document.getElementById('modalPrev').style.visibility=idx>0?'visible':'hidden';
+document.getElementById('modalNext').style.visibility=idx<SECTIONS.length-1?'visible':'hidden';
+
+modal.classList.remove('hidden');
+modalCard.classList.remove('modal-exit');
+modalCard.classList.add('modal-enter');
+document.body.style.overflow='hidden';
+}
+
+function closeModal(){
+modalCard.classList.remove('modal-enter');
+modalCard.classList.add('modal-exit');
+setTimeout(()=>{modal.classList.add('hidden');document.body.style.overflow='';currentModalIndex=-1;},250);
+}
+
+document.getElementById('modalClose').addEventListener('click',closeModal);
+document.getElementById('modalBackdrop').addEventListener('click',closeModal);
+document.getElementById('modalPrev').addEventListener('click',()=>{if(currentModalIndex>0)openModal(currentModalIndex-1);});
+document.getElementById('modalNext').addEventListener('click',()=>{if(currentModalIndex<SECTIONS.length-1)openModal(currentModalIndex+1);});
+
+/* ===== MOBILE TOC ===== */
+const mobileToc=document.getElementById('mobileTocPanel');
+function openMobileToc(){mobileToc.classList.remove('hidden');document.body.style.overflow='hidden';}
+function closeMobileToc(){mobileToc.classList.add('hidden');document.body.style.overflow='';}
+document.getElementById('tocToggle').addEventListener('click',openMobileToc);
+document.getElementById('mobileTocBackdrop').addEventListener('click',closeMobileToc);
+
+/* ===== THEME ===== */
+function initTheme(){
+const s=localStorage.getItem('theme');
+if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches))
+  document.documentElement.classList.add('dark');
+updateIcons();
+}
+function updateIcons(){
+const d=document.documentElement.classList.contains('dark');
+document.getElementById('sunIcon').classList.toggle('hidden',!d);
+document.getElementById('moonIcon').classList.toggle('hidden',d);
+}
+document.getElementById('themeToggle').addEventListener('click',()=>{
+document.documentElement.classList.toggle('dark');
+localStorage.setItem('theme',document.documentElement.classList.contains('dark')?'dark':'light');
+updateIcons();
+});
+
+/* ===== TOC SCROLL SPY ===== */
+function setupScrollSpy(){
+const tocItems=document.querySelectorAll('#tocNav .toc-item');
+if(!tocItems.length)return;
+const observer=new IntersectionObserver(entries=>{
+entries.forEach(entry=>{
+  if(entry.isIntersecting){
+    const id=entry.target.id.replace('section-','');
+    const idx=SECTIONS.findIndex(s=>s.id===id);
+    tocItems.forEach((t,i)=>t.classList.toggle('active',i===idx));
+  }
+});
+},{rootMargin:'-20% 0px -70% 0px',threshold:0});
+SECTIONS.forEach(s=>{const el=document.getElementById('section-'+s.id);if(el)observer.observe(el);});
+}
+
+/* ===== KEYBOARD ===== */
+document.addEventListener('keydown',e=>{
+if(e.key==='Escape'){
+  if(currentModalIndex>=0)closeModal();
+  else if(!mobileToc.classList.contains('hidden'))closeMobileToc();
+}
+if(e.key==='ArrowRight'&&currentModalIndex>=0&&currentModalIndex<SECTIONS.length-1){openModal(currentModalIndex+1);}
+if(e.key==='ArrowLeft'&&currentModalIndex>=0&&currentModalIndex>0){openModal(currentModalIndex-1);}
+});
+
+/* ===== INIT ===== */
+initTheme();
+renderSections();
+renderTOC();
+setTimeout(setupScrollSpy,100);
+</script>
+</body>
+</html>
